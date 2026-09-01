@@ -1,5 +1,11 @@
 """Domain and application package for the CAN sniffer."""
 
-from can_sniffer.protocol import CanFrame, DecodeResult, InfypowerIdentifier, ProtocolDecoder
+from can_sniffer.protocol import (
+    CanFrame,
+    DecodeResult,
+    InfypowerIdentifier,
+    ModuleState,
+    ProtocolDecoder,
+)
 
-__all__ = ["CanFrame", "DecodeResult", "InfypowerIdentifier", "ProtocolDecoder"]
+__all__ = ["CanFrame", "DecodeResult", "InfypowerIdentifier", "ModuleState", "ProtocolDecoder"]

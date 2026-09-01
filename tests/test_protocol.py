@@ -34,3 +34,23 @@ def test_reports_controller_error_frame_without_dropping_payload() -> None:
     assert result.frame == frame
     assert result.identifier is None
     assert result.diagnostics == ("CAN controller error frame", "Expected an 8-byte payload")
+
+
+def test_decodes_module_state_and_signed_ambient_temperature() -> None:
+    frame = CanFrame(0x028400F0, bytes.fromhex("00 00 00 00 FE 80 41 01"))
+
+    result = ProtocolDecoder().decode(frame)
+
+    assert result.ambient_temperature_celsius == -2
+    assert result.module_state is not None
+    assert result.module_state.communication_interrupt is True
+    assert result.module_state.module_off is False
+    assert result.module_state.input_over_voltage is True
+    assert result.module_state.power_limit is True
+    assert result.module_state.output_short is True
+    assert result.module_state.active_faults() == (
+        "communication_interrupt",
+        "input_over_voltage",
+        "power_limit",
+        "output_short",
+    )
