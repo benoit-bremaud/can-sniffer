@@ -1,0 +1,6 @@
+{
+  "stack": "python",
+  "language": "en",
+  "testCommand": "pytest",
+  "lintCommand": "ruff check ."
+}
