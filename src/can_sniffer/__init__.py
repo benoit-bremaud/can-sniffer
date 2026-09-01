@@ -1,5 +1,11 @@
 """Domain and application package for the CAN sniffer."""
 
+from can_sniffer.capture import (
+    CanCapturePort,
+    CaptureConfiguration,
+    SocketCanAdapter,
+    receive_frames,
+)
 from can_sniffer.protocol import (
     ACInputMeasurements,
     CanFrame,
@@ -16,6 +22,8 @@ from can_sniffer.protocol import (
 __all__ = [
     "CanFrame",
     "ACInputMeasurements",
+    "CaptureConfiguration",
+    "CanCapturePort",
     "DecodeResult",
     "InfypowerIdentifier",
     "ModuleMeasurements",
@@ -24,4 +32,6 @@ __all__ = [
     "ModuleState",
     "ProtocolDecoder",
     "SystemMeasurements",
+    "SocketCanAdapter",
+    "receive_frames",
 ]

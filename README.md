@@ -12,7 +12,7 @@ is intentionally out of scope for the first implementation milestone.
 
 Copy `.env.example` to `.env` and adjust local settings. Never commit `.env` or real captures.
 
-Install the project and development dependencies with:
+Install the project and development dependencies in the work environment with:
 
 ```bash
 python3 -m venv .venv
@@ -20,4 +20,17 @@ source .venv/bin/activate
 pip install -e '.[dev]'
 ```
 
-Run the quality checks with `pytest`, `ruff check .`, and `mypy`.
+Use the separate test environment for isolated validation:
+
+```bash
+python3 -m venv .venv-test
+.venv-test/bin/python -m pip install -e '.[dev]'
+```
+
+Run the quality checks from `.venv-test`:
+
+```bash
+.venv-test/bin/pytest
+.venv-test/bin/ruff check .
+.venv-test/bin/mypy
+```
