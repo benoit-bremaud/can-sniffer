@@ -64,3 +64,13 @@ def test_decodes_documented_system_voltage_and_current() -> None:
     assert result.system_measurements is not None
     assert result.system_measurements.output_voltage_volts == 500.0
     assert result.system_measurements.total_output_current_amperes == 50.0
+
+
+def test_decodes_documented_module_voltage_and_current() -> None:
+    frame = CanFrame(0x028300F0, bytes.fromhex("43 FA 00 00 40 60 00 00"))
+
+    result = ProtocolDecoder().decode(frame)
+
+    assert result.module_measurements is not None
+    assert result.module_measurements.output_voltage_volts == 500.0
+    assert result.module_measurements.output_current_amperes == 3.5

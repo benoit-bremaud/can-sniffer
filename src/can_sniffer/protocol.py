@@ -93,6 +93,14 @@ class SystemMeasurements:
 
 
 @dataclass(frozen=True, slots=True)
+class ModuleMeasurements:
+    """Output measurements from an Infypower command 0x03 response."""
+
+    output_voltage_volts: float
+    output_current_amperes: float
+
+
+@dataclass(frozen=True, slots=True)
 class DecodeResult:
     """Decoded information while preserving the original frame."""
 
@@ -102,6 +110,7 @@ class DecodeResult:
     module_state: ModuleState | None = None
     ambient_temperature_celsius: int | None = None
     system_measurements: SystemMeasurements | None = None
+    module_measurements: ModuleMeasurements | None = None
     diagnostics: tuple[str, ...] = ()
 
 
@@ -137,6 +146,7 @@ class ProtocolDecoder:
         module_state: ModuleState | None = None
         ambient_temperature: int | None = None
         system_measurements: SystemMeasurements | None = None
+        module_measurements: ModuleMeasurements | None = None
         if identifier is not None and identifier.command_number == 0x04 and len(frame.data) == 8:
             ambient_temperature = int.from_bytes(frame.data[4:5], byteorder="big", signed=True)
             module_state = self._decode_module_state(frame.data[5:8])
@@ -144,6 +154,11 @@ class ProtocolDecoder:
             system_measurements = SystemMeasurements(
                 output_voltage_volts=unpack(">f", frame.data[0:4])[0],
                 total_output_current_amperes=unpack(">f", frame.data[4:8])[0],
+            )
+        if identifier is not None and identifier.command_number == 0x03 and len(frame.data) == 8:
+            module_measurements = ModuleMeasurements(
+                output_voltage_volts=unpack(">f", frame.data[0:4])[0],
+                output_current_amperes=unpack(">f", frame.data[4:8])[0],
             )
 
         description = "Decoded Infypower frame" if identifier is not None else "Undecoded frame"
@@ -154,6 +169,7 @@ class ProtocolDecoder:
             module_state,
             ambient_temperature,
             system_measurements,
+            module_measurements,
             tuple(diagnostics),
         )
 
