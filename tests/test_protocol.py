@@ -85,3 +85,15 @@ def test_decodes_documented_ac_input_voltages() -> None:
     assert result.ac_input_measurements.first_phase_voltage_volts == 402.0
     assert result.ac_input_measurements.second_phase_voltage_volts == 400.5
     assert result.ac_input_measurements.third_phase_voltage_volts == 400.7
+
+
+def test_decodes_documented_module_ratings() -> None:
+    frame = CanFrame(0x028A00F0, bytes.fromhex("02 EE 00 64 01 00 05 DC"))
+
+    result = ProtocolDecoder().decode(frame)
+
+    assert result.module_ratings is not None
+    assert result.module_ratings.maximum_output_voltage_volts == 750
+    assert result.module_ratings.minimum_output_voltage_volts == 100
+    assert result.module_ratings.maximum_output_current_amperes == 25.6
+    assert result.module_ratings.rated_output_power_watts == 15000

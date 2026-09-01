@@ -110,6 +110,16 @@ class ACInputMeasurements:
 
 
 @dataclass(frozen=True, slots=True)
+class ModuleRatings:
+    """Nominal ratings from an Infypower command 0x0A response."""
+
+    maximum_output_voltage_volts: float
+    minimum_output_voltage_volts: float
+    maximum_output_current_amperes: float
+    rated_output_power_watts: float
+
+
+@dataclass(frozen=True, slots=True)
 class DecodeResult:
     """Decoded information while preserving the original frame."""
 
@@ -121,6 +131,7 @@ class DecodeResult:
     system_measurements: SystemMeasurements | None = None
     module_measurements: ModuleMeasurements | None = None
     ac_input_measurements: ACInputMeasurements | None = None
+    module_ratings: ModuleRatings | None = None
     diagnostics: tuple[str, ...] = ()
 
 
@@ -158,6 +169,7 @@ class ProtocolDecoder:
         system_measurements: SystemMeasurements | None = None
         module_measurements: ModuleMeasurements | None = None
         ac_input_measurements: ACInputMeasurements | None = None
+        module_ratings: ModuleRatings | None = None
         if identifier is not None and identifier.command_number == 0x04 and len(frame.data) == 8:
             ambient_temperature = int.from_bytes(frame.data[4:5], byteorder="big", signed=True)
             module_state = self._decode_module_state(frame.data[5:8])
@@ -177,6 +189,13 @@ class ProtocolDecoder:
                 second_phase_voltage_volts=self._decode_tenth_volt(frame.data[2:4]),
                 third_phase_voltage_volts=self._decode_tenth_volt(frame.data[4:6]),
             )
+        if identifier is not None and identifier.command_number == 0x0A and len(frame.data) == 8:
+            module_ratings = ModuleRatings(
+                maximum_output_voltage_volts=self._decode_uint16(frame.data[0:2]),
+                minimum_output_voltage_volts=self._decode_uint16(frame.data[2:4]),
+                maximum_output_current_amperes=self._decode_uint16(frame.data[4:6]) / 10,
+                rated_output_power_watts=self._decode_uint16(frame.data[6:8]) * 10,
+            )
 
         description = "Decoded Infypower frame" if identifier is not None else "Undecoded frame"
         return DecodeResult(
@@ -188,6 +207,7 @@ class ProtocolDecoder:
             system_measurements,
             module_measurements,
             ac_input_measurements,
+            module_ratings,
             tuple(diagnostics),
         )
 
@@ -232,3 +252,7 @@ class ProtocolDecoder:
     @staticmethod
     def _decode_tenth_volt(value_bytes: bytes) -> float:
         return int.from_bytes(value_bytes, byteorder="big", signed=False) / 10
+
+    @staticmethod
+    def _decode_uint16(value_bytes: bytes) -> int:
+        return int.from_bytes(value_bytes, byteorder="big", signed=False)
