@@ -101,6 +101,15 @@ class ModuleMeasurements:
 
 
 @dataclass(frozen=True, slots=True)
+class ACInputMeasurements:
+    """AC input voltages from an Infypower command 0x06 response."""
+
+    first_phase_voltage_volts: float
+    second_phase_voltage_volts: float
+    third_phase_voltage_volts: float
+
+
+@dataclass(frozen=True, slots=True)
 class DecodeResult:
     """Decoded information while preserving the original frame."""
 
@@ -111,6 +120,7 @@ class DecodeResult:
     ambient_temperature_celsius: int | None = None
     system_measurements: SystemMeasurements | None = None
     module_measurements: ModuleMeasurements | None = None
+    ac_input_measurements: ACInputMeasurements | None = None
     diagnostics: tuple[str, ...] = ()
 
 
@@ -147,6 +157,7 @@ class ProtocolDecoder:
         ambient_temperature: int | None = None
         system_measurements: SystemMeasurements | None = None
         module_measurements: ModuleMeasurements | None = None
+        ac_input_measurements: ACInputMeasurements | None = None
         if identifier is not None and identifier.command_number == 0x04 and len(frame.data) == 8:
             ambient_temperature = int.from_bytes(frame.data[4:5], byteorder="big", signed=True)
             module_state = self._decode_module_state(frame.data[5:8])
@@ -160,6 +171,12 @@ class ProtocolDecoder:
                 output_voltage_volts=unpack(">f", frame.data[0:4])[0],
                 output_current_amperes=unpack(">f", frame.data[4:8])[0],
             )
+        if identifier is not None and identifier.command_number == 0x06 and len(frame.data) == 8:
+            ac_input_measurements = ACInputMeasurements(
+                first_phase_voltage_volts=self._decode_tenth_volt(frame.data[0:2]),
+                second_phase_voltage_volts=self._decode_tenth_volt(frame.data[2:4]),
+                third_phase_voltage_volts=self._decode_tenth_volt(frame.data[4:6]),
+            )
 
         description = "Decoded Infypower frame" if identifier is not None else "Undecoded frame"
         return DecodeResult(
@@ -170,6 +187,7 @@ class ProtocolDecoder:
             ambient_temperature,
             system_measurements,
             module_measurements,
+            ac_input_measurements,
             tuple(diagnostics),
         )
 
@@ -210,3 +228,7 @@ class ProtocolDecoder:
             hardware_failure=bool(state_0 & 0x02),
             output_short=bool(state_0 & 0x01),
         )
+
+    @staticmethod
+    def _decode_tenth_volt(value_bytes: bytes) -> float:
+        return int.from_bytes(value_bytes, byteorder="big", signed=False) / 10

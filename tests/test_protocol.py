@@ -74,3 +74,14 @@ def test_decodes_documented_module_voltage_and_current() -> None:
     assert result.module_measurements is not None
     assert result.module_measurements.output_voltage_volts == 500.0
     assert result.module_measurements.output_current_amperes == 3.5
+
+
+def test_decodes_documented_ac_input_voltages() -> None:
+    frame = CanFrame(0x028600F0, bytes.fromhex("0F B4 0F A5 0F A7 00 00"))
+
+    result = ProtocolDecoder().decode(frame)
+
+    assert result.ac_input_measurements is not None
+    assert result.ac_input_measurements.first_phase_voltage_volts == 402.0
+    assert result.ac_input_measurements.second_phase_voltage_volts == 400.5
+    assert result.ac_input_measurements.third_phase_voltage_volts == 400.7
