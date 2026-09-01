@@ -17,9 +17,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["mypy>=1.14,<2", "pytest>=8.3,<9", "pytest-cov>=6,<7", "ruff>=0.9,<1"]
 
-[project.scripts]
-can-sniffer = "can_sniffer.main:main"
-
 [tool.hatch.build.targets.wheel]
 packages = ["src/can_sniffer"]
 
