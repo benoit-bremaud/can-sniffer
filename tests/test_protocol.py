@@ -97,3 +97,23 @@ def test_decodes_documented_module_ratings() -> None:
     assert result.module_ratings.minimum_output_voltage_volts == 100
     assert result.module_ratings.maximum_output_current_amperes == 25.6
     assert result.module_ratings.rated_output_power_watts == 15000
+
+
+def test_decodes_documented_module_availability() -> None:
+    frame = CanFrame(0x028C00F0, bytes.fromhex("13 58 01 66 00 00 00 00"))
+
+    result = ProtocolDecoder().decode(frame)
+
+    assert result.module_availability is not None
+    assert result.module_availability.external_voltage_volts == 495.2
+    assert result.module_availability.available_current_amperes == 35.8
+    assert result.module_availability.indicates_power_off() is False
+
+
+def test_zero_available_current_indicates_power_off() -> None:
+    frame = CanFrame(0x028C00F0, bytes.fromhex("13 58 00 00 00 00 00 00"))
+
+    result = ProtocolDecoder().decode(frame)
+
+    assert result.module_availability is not None
+    assert result.module_availability.indicates_power_off() is True
