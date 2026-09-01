@@ -54,3 +54,13 @@ def test_decodes_module_state_and_signed_ambient_temperature() -> None:
         "power_limit",
         "output_short",
     )
+
+
+def test_decodes_documented_system_voltage_and_current() -> None:
+    frame = CanFrame(0x02813FF0, bytes.fromhex("43 FA 00 00 42 48 00 00"))
+
+    result = ProtocolDecoder().decode(frame)
+
+    assert result.system_measurements is not None
+    assert result.system_measurements.output_voltage_volts == 500.0
+    assert result.system_measurements.total_output_current_amperes == 50.0

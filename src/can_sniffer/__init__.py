@@ -6,6 +6,14 @@ from can_sniffer.protocol import (
     InfypowerIdentifier,
     ModuleState,
     ProtocolDecoder,
+    SystemMeasurements,
 )
 
-__all__ = ["CanFrame", "DecodeResult", "InfypowerIdentifier", "ModuleState", "ProtocolDecoder"]
+__all__ = [
+    "CanFrame",
+    "DecodeResult",
+    "InfypowerIdentifier",
+    "ModuleState",
+    "ProtocolDecoder",
+    "SystemMeasurements",
+]
