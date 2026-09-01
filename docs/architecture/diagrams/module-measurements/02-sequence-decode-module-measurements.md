@@ -13,7 +13,7 @@ sequenceDiagram
     participant Measurements as Module measurement decoder
     participant Result as Module measurements
 
-    Decoder->>Measurements: decode(payload[1:8])
+    Decoder->>Measurements: decode(payload[0:8])
     Measurements->>Measurements: read voltage bytes 0 to 3
     Measurements->>Measurements: read current bytes 4 to 7
     Measurements->>Result: create immutable measurements
