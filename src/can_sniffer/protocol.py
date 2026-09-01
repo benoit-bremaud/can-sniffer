@@ -120,6 +120,18 @@ class ModuleRatings:
 
 
 @dataclass(frozen=True, slots=True)
+class ModuleAvailability:
+    """Available output capacity from an Infypower command 0x0C response."""
+
+    external_voltage_volts: float
+    available_current_amperes: float
+
+    def indicates_power_off(self) -> bool:
+        """Return whether the documented zero-current power-off condition is present."""
+        return self.available_current_amperes == 0
+
+
+@dataclass(frozen=True, slots=True)
 class DecodeResult:
     """Decoded information while preserving the original frame."""
 
@@ -132,6 +144,7 @@ class DecodeResult:
     module_measurements: ModuleMeasurements | None = None
     ac_input_measurements: ACInputMeasurements | None = None
     module_ratings: ModuleRatings | None = None
+    module_availability: ModuleAvailability | None = None
     diagnostics: tuple[str, ...] = ()
 
 
@@ -170,6 +183,7 @@ class ProtocolDecoder:
         module_measurements: ModuleMeasurements | None = None
         ac_input_measurements: ACInputMeasurements | None = None
         module_ratings: ModuleRatings | None = None
+        module_availability: ModuleAvailability | None = None
         if identifier is not None and identifier.command_number == 0x04 and len(frame.data) == 8:
             ambient_temperature = int.from_bytes(frame.data[4:5], byteorder="big", signed=True)
             module_state = self._decode_module_state(frame.data[5:8])
@@ -196,6 +210,11 @@ class ProtocolDecoder:
                 maximum_output_current_amperes=self._decode_uint16(frame.data[4:6]) / 10,
                 rated_output_power_watts=self._decode_uint16(frame.data[6:8]) * 10,
             )
+        if identifier is not None and identifier.command_number == 0x0C and len(frame.data) == 8:
+            module_availability = ModuleAvailability(
+                external_voltage_volts=self._decode_uint16(frame.data[0:2]) / 10,
+                available_current_amperes=self._decode_uint16(frame.data[2:4]) / 10,
+            )
 
         description = "Decoded Infypower frame" if identifier is not None else "Undecoded frame"
         return DecodeResult(
@@ -208,6 +227,7 @@ class ProtocolDecoder:
             module_measurements,
             ac_input_measurements,
             module_ratings,
+            module_availability,
             tuple(diagnostics),
         )
 
