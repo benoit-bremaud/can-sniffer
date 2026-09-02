@@ -178,6 +178,23 @@ def test_window_uses_one_timestamp_origin_across_capture_sessions(
     assert window._records[1].timestamp_seconds >= first_timestamp
 
 
+def test_window_starts_relative_timestamps_at_first_capture(
+    qt_application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del qt_application
+    clock = iter([100.0, 101.5])
+    monkeypatch.setattr("can_sniffer.ui.time.monotonic", lambda: next(clock))
+    window = CaptureWindow(
+        FakeController([DecodeResult(CanFrame(0x123, b"\x00"), None, "Frame")])
+    )
+
+    window.start_capture()
+    window._poll_capture()
+
+    assert window._records[0].timestamp_seconds == 1.5
+
+
 def test_window_exports_all_retained_records(
     qt_application: QApplication,
     monkeypatch: pytest.MonkeyPatch,

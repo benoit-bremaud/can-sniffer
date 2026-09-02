@@ -16,16 +16,16 @@ classDiagram
         +string description
         +tuple diagnostics
     }
-    class FrameFilter {
-        +matches(DecodeResult) bool
+    class CapturedFrame {
+        +float timestamp_seconds
+        +DecodeResult result
     }
-    class CaptureRecordStore {
-        +append(DecodeResult)
-        +clear()
-        +records() Iterable~DecodeResult~
+    class FrameFilter {
+        +from_text(string) FrameFilter
+        +matches(CapturedFrame) bool
     }
     class CsvExporter {
-        +export(Iterable~DecodeResult~) string
+        +to_csv(Iterable~CapturedFrame) string
     }
     class CaptureWindow {
         +pause_display()
@@ -34,11 +34,11 @@ classDiagram
         +export_csv()
     }
     CaptureWindow --> FrameFilter
-    CaptureWindow --> CaptureRecordStore
+    CaptureWindow --> CapturedFrame
     CaptureWindow --> CsvExporter
-    FrameFilter --> DecodeResult
-    CaptureRecordStore --> DecodeResult
-    CsvExporter --> DecodeResult
+    CapturedFrame --> DecodeResult
+    FrameFilter --> CapturedFrame
+    CsvExporter --> CapturedFrame
 ```
 
 ## Notes

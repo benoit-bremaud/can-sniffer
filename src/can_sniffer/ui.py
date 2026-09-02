@@ -49,7 +49,7 @@ class CaptureWindow(QMainWindow):
         self._controller = controller
         self._capturing = False
         self._display_paused = False
-        self._capture_origin = time.monotonic()
+        self._capture_origin: float | None = None
         self._channel = ""
         self._records: list[CapturedFrame] = []
         self._display_start_index = 0
@@ -120,6 +120,8 @@ class CaptureWindow(QMainWindow):
             return
         self._capturing = True
         self._display_paused = False
+        if self._capture_origin is None:
+            self._capture_origin = time.monotonic()
         self._channel = channel
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(True)
@@ -205,7 +207,11 @@ class CaptureWindow(QMainWindow):
 
             if result is None:
                 return
-            captured = CapturedFrame(time.monotonic() - self._capture_origin, result)
+            capture_origin = self._capture_origin
+            if capture_origin is None:
+                logger.error("Cannot timestamp a frame without a capture origin")
+                return
+            captured = CapturedFrame(time.monotonic() - capture_origin, result)
             self._records.append(captured)
             if not self._display_paused and self._frame_filter.matches(captured):
                 self._add_to_display(captured)
