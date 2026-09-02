@@ -5,8 +5,9 @@ Read-only graphical CAN bus monitor for Infypower charger modules on Linux.
 The charger protocol documented in the supplied V1.13 specification uses CAN 2.0B,
 29-bit extended identifiers, 8-byte payloads, and a bitrate of 125 kbit/s.
 
-The project is currently in the design and repository-initialization phase. CAN transmission
-is intentionally out of scope for the first implementation milestone.
+The current implementation supports read-only SocketCAN capture, Infypower frame decoding,
+capture filtering, temporal statistics, CSV export, and offline CSV replay. CAN transmission
+is intentionally out of scope and is not exposed by the application.
 
 ## Development
 
@@ -40,3 +41,18 @@ Start the graphical application from the work environment:
 ```bash
 .venv/bin/can-sniffer
 ```
+
+For a hardware-free smoke test, create a virtual CAN interface and run the application on
+`vcan0`:
+
+```bash
+sudo modprobe vcan
+sudo ip link add dev vcan0 type vcan
+sudo ip link set vcan0 up
+.venv/bin/can-sniffer
+```
+
+The current protocol decoder covers the documented Infypower system measurements, individual
+module measurements, AC input voltages, module ratings, and available output capacity. The
+module-measurement mapping is documented in
+`docs/architecture/specs/module-measurements.md`.
