@@ -247,6 +247,8 @@ class CaptureWindow(QMainWindow):
         self._replay.load(records)
         self._records.clear()
         self._display_start_index = 0
+        self._display_paused = False
+        self.pause_button.setText("Pause display")
         self.frame_list.clear()
         self.statistics_list.clear()
         self.status_label.setText(f"Loaded {len(records)} replay frame(s)")
@@ -287,6 +289,7 @@ class CaptureWindow(QMainWindow):
         self.status_label.setText("Replay reset")
 
     def _advance_replay(self) -> None:
+        was_playing = self._replay.is_playing
         now = time.monotonic()
         due = self._replay.advance(now - self._replay_last_tick)
         self._replay_last_tick = now
@@ -294,8 +297,9 @@ class CaptureWindow(QMainWindow):
             self._records.append(captured)
             if not self._display_paused and self._frame_filter.matches(captured):
                 self._add_to_display(captured)
-        if not due and not self._replay.is_playing:
+        if was_playing and not self._replay.is_playing:
             self._replay_timer.stop()
+            self.status_label.setText("Replay finished")
 
     @staticmethod
     def _format_statistics(item: IdentifierStatistics) -> str:
