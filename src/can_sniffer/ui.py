@@ -18,7 +18,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from can_sniffer.analysis import CapturedFrame, CsvExporter, FrameFilter
+from can_sniffer.analysis import (
+    CapturedFrame,
+    CsvExporter,
+    FrameFilter,
+    IdentifierStatistics,
+    TemporalAnalyzer,
+)
 from can_sniffer.capture import CaptureConfiguration
 from can_sniffer.protocol import DecodeResult
 
@@ -75,9 +81,13 @@ class CaptureWindow(QMainWindow):
         self.clear_button.setAccessibleName("Clear displayed frames")
         self.export_button = QPushButton("Export CSV")
         self.export_button.setAccessibleName("Export captured frames")
+        self.statistics_button = QPushButton("Refresh statistics")
+        self.statistics_button.setAccessibleName("Refresh CAN statistics")
         self.status_label = QLabel("Ready")
         self.frame_list = QListWidget()
         self.frame_list.setAccessibleName("Captured CAN frames")
+        self.statistics_list = QListWidget()
+        self.statistics_list.setAccessibleName("CAN identifier statistics")
 
         controls = QHBoxLayout()
         controls.addWidget(QLabel("Channel:"))
@@ -89,11 +99,14 @@ class CaptureWindow(QMainWindow):
         controls.addWidget(self.pause_button)
         controls.addWidget(self.clear_button)
         controls.addWidget(self.export_button)
+        controls.addWidget(self.statistics_button)
 
         central_widget = QWidget()
         layout = QVBoxLayout(central_widget)
         layout.addLayout(controls)
         layout.addWidget(self.status_label)
+        layout.addWidget(QLabel("Statistics:"))
+        layout.addWidget(self.statistics_list)
         layout.addWidget(self.frame_list)
         self.setCentralWidget(central_widget)
         self.setWindowTitle("CAN Sniffer")
@@ -104,6 +117,7 @@ class CaptureWindow(QMainWindow):
         self.pause_button.clicked.connect(self.toggle_display_pause)
         self.clear_button.clicked.connect(self.clear_history)
         self.export_button.clicked.connect(self.export_csv)
+        self.statistics_button.clicked.connect(self.refresh_statistics)
         self.filter_input.textChanged.connect(self.apply_filter)
 
     def start_capture(self) -> None:
@@ -182,6 +196,28 @@ class CaptureWindow(QMainWindow):
             self.status_label.setText(f"Error: {error}")
             return
         self.status_label.setText(f"Exported {len(self._records)} frame(s)")
+
+    def refresh_statistics(self) -> None:
+        """Refresh identifier statistics from all retained records."""
+        statistics = TemporalAnalyzer.summarize(self._records)
+        self.statistics_list.clear()
+        for item in statistics:
+            self.statistics_list.addItem(self._format_statistics(item))
+
+    @staticmethod
+    def _format_statistics(item: IdentifierStatistics) -> str:
+        """Format one identifier statistics row for the operator."""
+        period = (
+            "n/a"
+            if item.observed_period_seconds is None
+            else f"{item.observed_period_seconds:g} s"
+        )
+        frequency = "n/a" if item.frequency_hz is None else f"{item.frequency_hz:g} Hz"
+        return (
+            f"0x{item.arbitration_id:X}: count={item.count}, "
+            f"first={item.first_timestamp_seconds:g} s, "
+            f"last={item.last_timestamp_seconds:g} s, period={period}, frequency={frequency}"
+        )
 
     def _stop_after_poll_error(self) -> None:
         """Stop capture while preserving the original polling error."""

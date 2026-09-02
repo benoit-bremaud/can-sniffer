@@ -3,7 +3,7 @@ from io import StringIO
 
 import pytest
 
-from can_sniffer.analysis import CapturedFrame, CsvExporter, FrameFilter
+from can_sniffer.analysis import CapturedFrame, CsvExporter, FrameFilter, TemporalAnalyzer
 from can_sniffer.protocol import CanFrame, DecodeResult, ModuleAvailability
 
 
@@ -59,3 +59,37 @@ def test_csv_exporter_includes_external_voltage() -> None:
     content = CsvExporter.to_csv([CapturedFrame(0.0, result)])
 
     assert "External V=400 V, Available=25 A" in content
+
+
+def test_temporal_analyzer_groups_and_calculates_cadence() -> None:
+    records = [
+        CapturedFrame(0.0, captured(0x456).result),
+        CapturedFrame(2.25, captured(0x123).result),
+        CapturedFrame(1.0, captured(0x456).result),
+    ]
+
+    statistics = TemporalAnalyzer.summarize(records)
+
+    assert [item.arbitration_id for item in statistics] == [0x123, 0x456]
+    assert statistics[1].count == 2
+    assert statistics[1].observed_period_seconds == 1.0
+    assert statistics[1].frequency_hz == 1.0
+
+
+def test_temporal_analyzer_handles_single_and_invalid_intervals() -> None:
+    records = [
+        CapturedFrame(2.0, captured(0x123).result),
+        CapturedFrame(1.0, captured(0x456).result),
+        CapturedFrame(1.0, captured(0x456).result),
+    ]
+
+    statistics = TemporalAnalyzer.summarize(records)
+
+    assert statistics[0].observed_period_seconds is None
+    assert statistics[0].frequency_hz is None
+    assert statistics[1].observed_period_seconds is None
+    assert statistics[1].frequency_hz is None
+
+
+def test_temporal_analyzer_handles_empty_capture() -> None:
+    assert TemporalAnalyzer.summarize([]) == ()
