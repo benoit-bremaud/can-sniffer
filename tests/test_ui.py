@@ -103,6 +103,9 @@ def test_window_refreshes_identifier_statistics(qt_application: QApplication) ->
     assert window.statistics_list.count() == 1
     assert "0x123: count=2" in window.statistics_list.item(0).text()
     assert "frequency=" in window.statistics_list.item(0).text()
+    assert "interval_min=" in window.statistics_list.item(0).text()
+    assert "interval_max=" in window.statistics_list.item(0).text()
+    assert "deviation_max=" in window.statistics_list.item(0).text()
 
 
 def test_window_loads_and_replays_csv_capture(

@@ -30,8 +30,9 @@ tolerance threshold, trigger alarms, or transmit CAN frames.
    intervals.
 4. Maximum absolute deviation is the greatest `abs(interval - average_period)` among the
    valid intervals.
-5. An identifier with fewer than two valid positive intervals exposes unavailable variation
-   metrics and does not cause the capture analysis to fail.
+5. An identifier with no valid positive interval exposes unavailable variation metrics and
+   does not cause the capture analysis to fail. A single valid interval is reported as both
+   the minimum and maximum, with zero maximum deviation.
 6. Empty captures continue to return no statistics.
 7. Timestamps that do not increase are ignored for interval metrics. The analyzer remains
    deterministic and does not reorder captured records.
