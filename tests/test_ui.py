@@ -70,6 +70,39 @@ def test_window_displays_decoded_system_measurements(
     assert "Vout=500 V, Iout=50 A" in window.frame_list.item(0).text()
 
 
+def test_window_drains_available_frames_in_one_poll(qt_application: QApplication) -> None:
+    del qt_application
+    results = [
+        DecodeResult(CanFrame(0x100 + index, b"\x00"), None, "Undecoded frame")
+        for index in range(3)
+    ]
+    window = CaptureWindow(FakeController(results))
+
+    window.start_capture()
+    window._poll_capture()
+
+    assert window.frame_list.count() == 3
+
+
+def test_window_keeps_bounded_display_history(
+    qt_application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del qt_application
+    monkeypatch.setattr(CaptureWindow, "_MAX_DISPLAYED_FRAMES", 2)
+    results = [
+        DecodeResult(CanFrame(0x100 + index, b"\x00"), None, "Undecoded frame")
+        for index in range(3)
+    ]
+    window = CaptureWindow(FakeController(results))
+
+    window.start_capture()
+    window._poll_capture()
+
+    assert window.frame_list.count() == 2
+    assert "0x101" in window.frame_list.item(0).text()
+
+
 def test_window_displays_module_diagnostics_and_ratings(
     qt_application: QApplication,
 ) -> None:

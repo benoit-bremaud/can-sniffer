@@ -71,6 +71,30 @@ def test_capture_session_stop_ends_loop_after_current_frame() -> None:
     assert port.closed is True
 
 
+def test_capture_session_generator_does_not_receive_after_stop() -> None:
+    port = FakePort([CanFrame(arbitration_id=0x123, data=b"\x00" * 8)])
+    session = CaptureSession(port, ProtocolDecoder())
+    capture = session.capture(CaptureConfiguration(channel="can0"))
+
+    next(capture)
+    session.stop()
+
+    assert list(capture) == []
+    assert port.closed is True
+
+
+def test_capture_session_preserves_open_error_when_close_also_fails() -> None:
+    class FailingClosePort(FakePort):
+        def close(self) -> None:
+            raise RuntimeError("close failed")
+
+    open_error = OSError("open failed")
+    session = CaptureSession(FailingClosePort([], open_error=open_error), ProtocolDecoder())
+
+    with pytest.raises(OSError, match="open failed"):
+        list(session.capture(CaptureConfiguration(channel="can0")))
+
+
 def test_capture_session_rejects_concurrent_capture() -> None:
     port = FakePort([CanFrame(arbitration_id=0x123, data=b"\x00" * 8)])
     session = CaptureSession(port, ProtocolDecoder())

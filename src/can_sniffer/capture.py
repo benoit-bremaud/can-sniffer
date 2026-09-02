@@ -57,6 +57,8 @@ class SocketCanAdapter:
             raise ValueError("CAN channel must not be empty")
         if configuration.bitrate <= 0:
             raise ValueError("CAN bitrate must be positive")
+        if not configuration.listen_only:
+            raise ValueError("listen-only mode is mandatory")
         if self._bus is not None:
             raise RuntimeError("CAN adapter is already open")
         self._bus = self._bus_factory(configuration)

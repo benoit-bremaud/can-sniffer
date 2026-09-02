@@ -34,6 +34,9 @@ class CaptureController(Protocol):
 class CaptureWindow(QMainWindow):
     """Display decoded CAN frames while keeping capture polling non-blocking."""
 
+    _MAX_FRAMES_PER_TICK = 100
+    _MAX_DISPLAYED_FRAMES = 10_000
+
     def __init__(self, controller: CaptureController) -> None:
         super().__init__()
         self._controller = controller
@@ -101,20 +104,23 @@ class CaptureWindow(QMainWindow):
     def _poll_capture(self) -> None:
         if not self._capturing:
             return
-        try:
-            result = self._controller.poll(timeout=0)
-        except Exception as error:
-            self._timer.stop()
-            self._controller.stop()
-            self._capturing = False
-            self.start_button.setEnabled(True)
-            self.stop_button.setEnabled(False)
-            self.status_label.setText(f"Error: {error}")
-            return
+        for _ in range(self._MAX_FRAMES_PER_TICK):
+            try:
+                result = self._controller.poll(timeout=0)
+            except Exception as error:
+                self._timer.stop()
+                self._controller.stop()
+                self._capturing = False
+                self.start_button.setEnabled(True)
+                self.stop_button.setEnabled(False)
+                self.status_label.setText(f"Error: {error}")
+                return
 
-        if result is None:
-            return
-        self.frame_list.addItem(self._format_result(result))
+            if result is None:
+                return
+            self.frame_list.addItem(self._format_result(result))
+            while self.frame_list.count() > self._MAX_DISPLAYED_FRAMES:
+                self.frame_list.takeItem(0)
 
     @staticmethod
     def _format_result(result: DecodeResult) -> str:

@@ -1,9 +1,12 @@
 """Application use case for orchestrating a CAN capture session."""
 
+import logging
 from collections.abc import Iterator
 
-from can_sniffer.capture import CanCapturePort, CaptureConfiguration, receive_frames
+from can_sniffer.capture import CanCapturePort, CaptureConfiguration
 from can_sniffer.protocol import DecodeResult, ProtocolDecoder
+
+logger = logging.getLogger(__name__)
 
 
 class CaptureSession:
@@ -21,7 +24,10 @@ class CaptureSession:
         try:
             self._port.open(configuration)
         except Exception:
-            self._port.close()
+            try:
+                self._port.close()
+            except Exception:
+                logger.warning("Failed to close CAN port after an open error", exc_info=True)
             raise
         self._capturing = True
 
@@ -40,8 +46,9 @@ class CaptureSession:
         """Yield decoded frames until timeout, stop, or a port exception."""
         self.start(configuration)
         try:
-            for frame in receive_frames(self._port, timeout):
-                if not self._capturing:
+            while self._capturing:
+                frame = self._port.receive(timeout)
+                if frame is None:
                     return
                 yield self._decoder.decode(frame)
         finally:

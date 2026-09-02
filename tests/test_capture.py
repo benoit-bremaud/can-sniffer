@@ -80,6 +80,8 @@ def test_adapter_rejects_invalid_configuration_and_lifecycle() -> None:
         adapter.open(CaptureConfiguration(channel=""))
     with pytest.raises(ValueError, match="must be positive"):
         adapter.open(CaptureConfiguration(channel="can0", bitrate=0))
+    with pytest.raises(ValueError, match="listen-only mode is mandatory"):
+        adapter.open(CaptureConfiguration(channel="can0", listen_only=False))
 
     adapter.open(CaptureConfiguration(channel="can0"))
     with pytest.raises(RuntimeError, match="already open"):
