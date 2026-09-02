@@ -19,6 +19,7 @@ jobs:
         uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Scan for secrets
         uses: gitleaks/gitleaks-action@bcfb9cce635345aac9996cedc19b2de8e01b894f
