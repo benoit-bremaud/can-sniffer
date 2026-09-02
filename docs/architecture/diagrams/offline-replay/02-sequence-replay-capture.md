@@ -20,7 +20,8 @@ sequenceDiagram
     Operator->>Window: Select CSV file
     Window->>Loader: load(path)
     Loader-->>Window: ordered captured records
-    Window->>Replay: reset(records)
+    Window->>Replay: load(records)
+    Window->>Replay: reset()
     Operator->>Window: Play
     loop Replay timer
         Window->>Replay: advance(elapsed)

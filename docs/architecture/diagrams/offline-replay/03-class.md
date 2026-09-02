@@ -16,7 +16,8 @@ classDiagram
         +DecodeResult result
     }
     class CsvCaptureLoader {
-        +load(string) tuple~CapturedFrame~
+        +load(Path) tuple~CapturedFrame~
+        +from_csv(string) tuple~CapturedFrame~
     }
     class ReplayController {
         +load(tuple~CapturedFrame~)

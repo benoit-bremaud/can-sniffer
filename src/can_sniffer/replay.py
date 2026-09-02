@@ -1,6 +1,7 @@
 """Offline loading and deterministic replay of exported CAN captures."""
 
 import csv
+import math
 from collections.abc import Iterable
 from io import StringIO
 from pathlib import Path
@@ -49,7 +50,9 @@ class CsvCaptureLoader:
                 is_error_frame = cls._parse_bool(row["is_error_frame"], "is_error_frame")
                 data = bytes.fromhex(row["data"] or "")
             except (TypeError, ValueError) as error:
-                raise ValueError(f"Invalid CSV row {row_number}") from error
+                raise ValueError(f"Invalid CSV row {row_number}: {error}") from error
+            if not math.isfinite(timestamp):
+                raise ValueError(f"Timestamp must be finite on CSV row {row_number}")
             if timestamp < 0 or timestamp < previous_timestamp:
                 raise ValueError(f"Timestamp is not monotonic on CSV row {row_number}")
             if not 0 <= arbitration_id <= (1 << 29) - 1:
@@ -108,6 +111,11 @@ class ReplayController:
     def is_playing(self) -> bool:
         """Return whether playback is currently active."""
         return self._playing
+
+    @property
+    def has_records(self) -> bool:
+        """Return whether a capture has been loaded for replay."""
+        return bool(self._records)
 
     def reset(self) -> None:
         """Stop playback and return to the beginning."""

@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 from PySide6.QtWidgets import QApplication
 
+from can_sniffer.analysis import CapturedFrame
 from can_sniffer.app import create_application, create_capture_window
 from can_sniffer.capture import CaptureConfiguration
 from can_sniffer.protocol import (
@@ -141,6 +142,43 @@ def test_window_rejects_loading_replay_while_capturing(qt_application: QApplicat
     window.start_capture()
 
     window.load_replay()
+
+    assert "stop live capture" in window.status_label.text()
+
+
+def test_window_rejects_replay_while_live_capture_is_active(qt_application: QApplication) -> None:
+    del qt_application
+    window = CaptureWindow(FakeController([]))
+    window.start_capture()
+
+    window.play_replay()
+
+    assert "stop live capture" in window.status_label.text()
+
+
+def test_window_rejects_live_capture_until_replay_is_reset(qt_application: QApplication) -> None:
+    del qt_application
+    window = CaptureWindow(FakeController([]))
+    window._replay.load(
+        (
+            CapturedFrame(0.0, DecodeResult(CanFrame(0x123, b"\x00"), None, "Frame")),
+        )
+    )
+    window._replay.play()
+
+    window.start_capture()
+
+    assert "pause replay" in window.status_label.text()
+
+
+def test_window_reset_replay_does_not_clear_live_capture(
+    qt_application: QApplication,
+) -> None:
+    del qt_application
+    window = CaptureWindow(FakeController([]))
+    window.start_capture()
+
+    window.reset_replay()
 
     assert "stop live capture" in window.status_label.text()
 

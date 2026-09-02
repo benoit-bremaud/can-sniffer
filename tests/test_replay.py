@@ -35,6 +35,8 @@ def test_csv_loader_accepts_empty_capture() -> None:
         CSV.replace("1.000000", "0.000000\n0.500000"),
         CSV.replace("01 02", "01 02 03 04 05 06 07 08 09"),
         CSV.replace("true,false", "maybe,false"),
+        CSV.replace("1.000000", "NaN"),
+        CSV.replace("1.000000", "inf"),
     ],
 )
 def test_csv_loader_rejects_invalid_content(content: str) -> None:
@@ -74,3 +76,11 @@ def test_replay_controller_pause_and_reset_are_deterministic() -> None:
 def test_replay_controller_rejects_negative_time() -> None:
     with pytest.raises(ValueError, match="must not be negative"):
         ReplayController().advance(-1.0)
+
+
+def test_replay_controller_reports_loaded_records() -> None:
+    controller = ReplayController()
+
+    assert controller.has_records is False
+    controller.load(CsvCaptureLoader.from_csv(CSV))
+    assert controller.has_records is True

@@ -148,6 +148,9 @@ class CaptureWindow(QMainWindow):
         if not channel:
             self.status_label.setText("Error: CAN channel is required")
             return
+        if self._replay.is_playing:
+            self.status_label.setText("Error: pause replay before starting live capture")
+            return
 
         try:
             self._controller.start(CaptureConfiguration(channel=channel))
@@ -250,7 +253,16 @@ class CaptureWindow(QMainWindow):
 
     def play_replay(self) -> None:
         """Start or resume local CSV playback."""
+        if self._capturing:
+            self.status_label.setText("Error: stop live capture before replay")
+            return
+        if not self._replay.has_records:
+            self.status_label.setText("Error: load a CSV capture before replay")
+            return
         self._replay.play()
+        if not self._replay.is_playing:
+            self.status_label.setText("Error: replay has finished, reset it before replay")
+            return
         self._replay_last_tick = time.monotonic()
         self._replay_timer.start()
         self.status_label.setText("Replaying CSV capture")
@@ -263,6 +275,9 @@ class CaptureWindow(QMainWindow):
 
     def reset_replay(self) -> None:
         """Reset local playback and clear replayed records from the views."""
+        if self._capturing:
+            self.status_label.setText("Error: stop live capture before resetting replay")
+            return
         self._replay.reset()
         self._replay_timer.stop()
         self._records.clear()
