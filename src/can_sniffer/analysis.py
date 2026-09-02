@@ -53,9 +53,10 @@ class TemporalAnalyzer:
             intervals = TemporalAnalyzer._positive_intervals(captured_records)
             minimum_interval = min(intervals) if intervals else None
             maximum_interval = max(intervals) if intervals else None
+            variation_baseline = sum(intervals) / len(intervals) if intervals else None
             maximum_deviation = (
-                max(abs(interval - period) for interval in intervals)
-                if intervals and period is not None
+                max(abs(interval - variation_baseline) for interval in intervals)
+                if variation_baseline is not None
                 else None
             )
             statistics.append(

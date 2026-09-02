@@ -129,7 +129,23 @@ def test_temporal_analyzer_ignores_non_increasing_intervals() -> None:
     assert statistics.observed_period_seconds == 4 / 3
     assert statistics.minimum_interval_seconds == 2.0
     assert statistics.maximum_interval_seconds == 3.0
-    assert statistics.maximum_deviation_seconds == 5 / 3
+    assert statistics.maximum_deviation_seconds == 0.5
+
+
+def test_temporal_analyzer_does_not_report_false_variation_after_filtering() -> None:
+    records = [
+        CapturedFrame(0.0, captured(0x123).result),
+        CapturedFrame(2.0, captured(0x123).result),
+        CapturedFrame(1.0, captured(0x123).result),
+        CapturedFrame(3.0, captured(0x123).result),
+    ]
+
+    statistics = TemporalAnalyzer.summarize(records)[0]
+
+    assert statistics.observed_period_seconds == 1.0
+    assert statistics.minimum_interval_seconds == 2.0
+    assert statistics.maximum_interval_seconds == 2.0
+    assert statistics.maximum_deviation_seconds == 0.0
 
 
 def test_temporal_analyzer_handles_empty_capture() -> None:

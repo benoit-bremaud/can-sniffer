@@ -25,11 +25,13 @@ tolerance threshold, trigger alarms, or transmit CAN frames.
 
 1. Intervals are calculated independently for each arbitration identifier.
 2. The existing average period remains `(last_timestamp - first_timestamp) / (count - 1)`
-   when at least two valid positive intervals are available.
+   when at least two records exist and their elapsed time is positive. Its availability is
+   independent from the interval-variation metrics.
 3. Minimum and maximum interval values are derived from valid positive consecutive
    intervals.
-4. Maximum absolute deviation is the greatest `abs(interval - average_period)` among the
-   valid intervals.
+4. The variation baseline is the arithmetic mean of the valid positive intervals. Maximum
+   absolute deviation is the greatest `abs(interval - variation_baseline)` among those
+   intervals.
 5. An identifier with no valid positive interval exposes unavailable variation metrics and
    does not cause the capture analysis to fail. A single valid interval is reported as both
    the minimum and maximum, with zero maximum deviation.
