@@ -179,6 +179,7 @@ class CaptureWindow(QMainWindow):
         if result.module_state is not None:
             faults = result.module_state.active_faults()
             decoded_values.append(f"Faults={', '.join(faults) if faults else 'none'}")
+        description = f" | {result.description}" if result.description else ""
         details = f" | {'; '.join(decoded_values)}" if decoded_values else ""
         diagnostics = f" | {'; '.join(result.diagnostics)}" if result.diagnostics else ""
-        return f"0x{frame.arbitration_id:X} [{data}]{details}{diagnostics}"
+        return f"0x{frame.arbitration_id:X} [{data}]{description}{details}{diagnostics}"

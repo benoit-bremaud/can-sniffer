@@ -50,6 +50,7 @@ def test_window_starts_and_displays_decoded_frame(qt_application: QApplication) 
     assert controller.configurations == [CaptureConfiguration(channel="can0")]
     assert window.frame_list.count() == 1
     assert "0x123 [01 02]" in window.frame_list.item(0).text()
+    assert "Undecoded frame" in window.frame_list.item(0).text()
 
 
 def test_window_displays_decoded_system_measurements(
