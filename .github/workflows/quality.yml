@@ -20,6 +20,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install Qt runtime dependency
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y libegl1
+
       - name: Create isolated test environment
         run: python -m venv .venv-test
 
