@@ -16,16 +16,18 @@ classDiagram
     class CanCapturePort {
         <<interface>>
         +open(CaptureConfiguration)
-        +receive() CanFrame
+        +receive(timeout) CanFrame|None
         +close()
     }
     class SocketCanAdapter {
         +open(CaptureConfiguration)
-        +receive() CanFrame
+        +receive(timeout) CanFrame|None
         +close()
     }
     class CaptureSession {
-        +capture(CaptureConfiguration) Iterator~DecodeResult~
+        +start(CaptureConfiguration)
+        +poll(timeout) DecodeResult|None
+        +capture(CaptureConfiguration, timeout) Iterator~DecodeResult~
         +stop()
     }
     class ProtocolDecoder {

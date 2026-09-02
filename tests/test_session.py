@@ -117,3 +117,18 @@ def test_capture_session_closes_port_when_open_fails() -> None:
         list(session.capture(CaptureConfiguration(channel="can0")))
 
     assert port.closed is True
+
+
+def test_capture_session_suppresses_close_error_when_stopping() -> None:
+    class FailingClosePort(FakePort):
+        def close(self) -> None:
+            raise RuntimeError("close failed")
+
+    port = FailingClosePort([])
+    session = CaptureSession(port, ProtocolDecoder())
+    session.start(CaptureConfiguration(channel="can0"))
+
+    session.stop()
+
+    with pytest.raises(RuntimeError, match="not running"):
+        session.poll(timeout=0)

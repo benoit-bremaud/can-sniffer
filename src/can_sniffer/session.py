@@ -58,4 +58,7 @@ class CaptureSession:
         """Request that the active capture loop stop after its current frame."""
         if self._capturing:
             self._capturing = False
-            self._port.close()
+            try:
+                self._port.close()
+            except Exception:
+                logger.warning("Failed to close CAN port while stopping capture", exc_info=True)

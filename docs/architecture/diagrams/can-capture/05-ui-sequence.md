@@ -16,17 +16,22 @@ sequenceDiagram
     participant Decoder as Protocol decoder
 
     Operator->>Window: Enter channel and select Start
-    Window->>Session: capture(configuration, timeout=0)
-    Window->>Session: poll next decoded result
-    Session->>Port: receive frame
-    Port-->>Session: domain frame
-    Session->>Decoder: decode(frame)
-    Decoder-->>Session: DecodeResult
-    Session-->>Window: DecodeResult
-    Window-->>Operator: Display frame and diagnostics
+    Window->>Session: start(configuration)
+    loop Every Qt timer tick
+        Window->>Session: poll(timeout=0)
+        Session->>Port: receive(timeout=0)
+        Port-->>Session: domain frame or timeout
+        alt Frame received
+            Session->>Decoder: decode(frame)
+            Decoder-->>Session: DecodeResult
+            Session-->>Window: DecodeResult
+            Window-->>Operator: Display frame and diagnostics
+        else No frame available
+            Session-->>Window: None
+        end
+    end
     Operator->>Window: Select Stop
     Window->>Session: stop()
-    Window->>Session: finalize capture iterator
     Session->>Port: close()
 ```
 

@@ -1,5 +1,6 @@
 """Minimal PySide6 user interface for read-only CAN capture."""
 
+import logging
 from typing import Protocol
 
 from PySide6.QtCore import QTimer
@@ -16,6 +17,8 @@ from PySide6.QtWidgets import (
 
 from can_sniffer.capture import CaptureConfiguration
 from can_sniffer.protocol import DecodeResult
+
+logger = logging.getLogger(__name__)
 
 
 class CaptureController(Protocol):
@@ -93,13 +96,24 @@ class CaptureWindow(QMainWindow):
         self._timer.start()
 
     def stop_capture(self) -> None:
-        """Stop polling and finalize the active capture iterator."""
-        self._controller.stop()
+        """Stop polling and reset the window even if cleanup fails."""
         self._timer.stop()
         self._capturing = False
         self.start_button.setEnabled(True)
         self.stop_button.setEnabled(False)
+        try:
+            self._controller.stop()
+        except Exception as error:
+            self.status_label.setText(f"Error: {error}")
+            return
         self.status_label.setText("Stopped")
+
+    def _stop_after_poll_error(self) -> None:
+        """Stop capture while preserving the original polling error."""
+        try:
+            self._controller.stop()
+        except Exception:
+            logger.warning("Failed to clean up after a CAN polling error", exc_info=True)
 
     def _poll_capture(self) -> None:
         if not self._capturing:
@@ -109,7 +123,7 @@ class CaptureWindow(QMainWindow):
                 result = self._controller.poll(timeout=0)
             except Exception as error:
                 self._timer.stop()
-                self._controller.stop()
+                self._stop_after_poll_error()
                 self._capturing = False
                 self.start_button.setEnabled(True)
                 self.stop_button.setEnabled(False)

@@ -165,6 +165,47 @@ def test_window_stop_requests_controller_and_closes_capture(qt_application: QApp
     assert window.stop_button.isEnabled() is False
 
 
+def test_window_stop_reports_cleanup_error_and_resets_controls(
+    qt_application: QApplication,
+) -> None:
+    del qt_application
+
+    class FailingController(FakeController):
+        def stop(self) -> None:
+            raise RuntimeError("close failed")
+
+    window = CaptureWindow(FailingController([]))
+    window.start_capture()
+    window.stop_capture()
+
+    assert "close failed" in window.status_label.text()
+    assert window.start_button.isEnabled() is True
+    assert window.stop_button.isEnabled() is False
+
+
+def test_window_preserves_poll_error_when_cleanup_also_fails(
+    qt_application: QApplication,
+) -> None:
+    del qt_application
+
+    class FailingController(FakeController):
+        def poll(self, timeout: float | None = None) -> DecodeResult | None:
+            del timeout
+            raise OSError("receive failed")
+
+        def stop(self) -> None:
+            raise RuntimeError("close failed")
+
+    window = CaptureWindow(FailingController([]))
+    window.start_capture()
+    window._poll_capture()
+
+    assert "receive failed" in window.status_label.text()
+    assert "close failed" not in window.status_label.text()
+    assert window.start_button.isEnabled() is True
+    assert window.stop_button.isEnabled() is False
+
+
 def test_window_displays_capture_error(qt_application: QApplication) -> None:
     del qt_application
 
