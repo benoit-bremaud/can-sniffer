@@ -92,6 +92,8 @@ class CaptureWindow(QMainWindow):
         self.play_replay_button.setAccessibleName("Play CSV replay")
         self.pause_replay_button = QPushButton("Pause")
         self.pause_replay_button.setAccessibleName("Pause CSV replay")
+        self.stop_replay_button = QPushButton("Stop")
+        self.stop_replay_button.setAccessibleName("Stop CSV replay")
         self.reset_replay_button = QPushButton("Reset")
         self.reset_replay_button.setAccessibleName("Reset CSV replay")
         self.status_label = QLabel("Ready")
@@ -117,6 +119,7 @@ class CaptureWindow(QMainWindow):
         controls.addWidget(self.load_replay_button)
         controls.addWidget(self.play_replay_button)
         controls.addWidget(self.pause_replay_button)
+        controls.addWidget(self.stop_replay_button)
         controls.addWidget(self.reset_replay_button)
 
         central_widget = QWidget()
@@ -139,6 +142,7 @@ class CaptureWindow(QMainWindow):
         self.load_replay_button.clicked.connect(self.load_replay)
         self.play_replay_button.clicked.connect(self.play_replay)
         self.pause_replay_button.clicked.connect(self.pause_replay)
+        self.stop_replay_button.clicked.connect(self.stop_replay)
         self.reset_replay_button.clicked.connect(self.reset_replay)
         self.filter_input.textChanged.connect(self.apply_filter)
 
@@ -274,6 +278,12 @@ class CaptureWindow(QMainWindow):
         self._replay.pause()
         self._replay_timer.stop()
         self.status_label.setText("Replay paused")
+
+    def stop_replay(self) -> None:
+        """Stop local CSV playback while preserving its current position."""
+        self._replay.stop()
+        self._replay_timer.stop()
+        self.status_label.setText("Replay stopped")
 
     def reset_replay(self) -> None:
         """Reset local playback and clear replayed records from the views."""

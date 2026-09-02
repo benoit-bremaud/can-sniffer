@@ -237,6 +237,19 @@ def test_window_reset_replay_does_not_clear_live_capture(
     assert "stop live capture" in window.status_label.text()
 
 
+def test_window_stop_replay_preserves_position(qt_application: QApplication) -> None:
+    del qt_application
+    window = CaptureWindow(FakeController([]))
+    window._replay.load(
+        (CapturedFrame(0.0, DecodeResult(CanFrame(0x123, b"\x00"), None, "Frame")),)
+    )
+    window.play_replay()
+    window.stop_replay()
+
+    assert window.status_label.text() == "Replay stopped"
+    assert window._replay.is_playing is False
+
+
 def test_window_filters_visible_history_without_stopping_capture(
     qt_application: QApplication,
 ) -> None:

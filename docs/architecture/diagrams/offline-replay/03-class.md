@@ -23,6 +23,7 @@ classDiagram
         +load(tuple~CapturedFrame~)
         +play()
         +pause()
+        +stop()
         +reset()
         +advance(float) tuple~CapturedFrame~
     }

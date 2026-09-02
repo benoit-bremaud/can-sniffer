@@ -16,11 +16,13 @@ flowchart LR
         Load[Load CSV capture]
         Play[Play capture]
         Pause[Pause replay]
+        Stop[Stop replay]
         Reset[Reset replay]
     end
     Operator --> Load
     Operator --> Play
     Operator --> Pause
+    Operator --> Stop
     Operator --> Reset
 ```
 

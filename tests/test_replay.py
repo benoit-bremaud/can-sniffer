@@ -35,6 +35,7 @@ def test_csv_loader_accepts_empty_capture() -> None:
         CSV.replace("1.000000", "0.000000\n0.500000"),
         CSV.replace("01 02", "01 02 03 04 05 06 07 08 09"),
         CSV.replace("true,false", "maybe,false"),
+        CSV.replace("0x123,true", "0x800,false"),
         CSV.replace("1.000000", "NaN"),
         CSV.replace("1.000000", "inf"),
     ],
@@ -84,3 +85,15 @@ def test_replay_controller_reports_loaded_records() -> None:
     assert controller.has_records is False
     controller.load(CsvCaptureLoader.from_csv(CSV))
     assert controller.has_records is True
+
+
+def test_replay_controller_stop_preserves_position() -> None:
+    controller = ReplayController()
+    controller.load(CsvCaptureLoader.from_csv(CSV))
+    controller.play()
+    controller.advance(0.0)
+    controller.stop()
+
+    assert controller.is_playing is False
+    controller.play()
+    assert controller.advance(1.5)[0].result.frame.arbitration_id == 0x456

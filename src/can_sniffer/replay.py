@@ -57,6 +57,8 @@ class CsvCaptureLoader:
                 raise ValueError(f"Timestamp is not monotonic on CSV row {row_number}")
             if not 0 <= arbitration_id <= (1 << 29) - 1:
                 raise ValueError(f"CAN identifier is outside the 29-bit range on row {row_number}")
+            if not is_extended_id and arbitration_id > 0x7FF:
+                raise ValueError(f"Standard CAN identifier exceeds 11 bits on row {row_number}")
             if len(data) > 8:
                 raise ValueError(f"CAN payload exceeds 8 bytes on CSV row {row_number}")
             description = row["description"] or ""
@@ -105,6 +107,10 @@ class ReplayController:
 
     def pause(self) -> None:
         """Pause playback at the current position."""
+        self._playing = False
+
+    def stop(self) -> None:
+        """Stop playback while preserving the current playback position."""
         self._playing = False
 
     @property

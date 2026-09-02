@@ -30,6 +30,8 @@ sequenceDiagram
     end
     Operator->>Window: Pause
     Window->>Replay: pause()
+    Operator->>Window: Stop
+    Window->>Replay: stop()
     Operator->>Window: Reset
     Window->>Replay: reset()
     Replay-->>Window: empty playback position
