@@ -1,25 +1,27 @@
-# Use-case diagram — module measurements
+# Use-case diagram — individual module measurements
+
+> **Feature**: issue #3 — [Decode individual charger module measurements](https://github.com/benoit-bremaud/can-sniffer/issues/3)
+> **Source specs**: `docs/architecture/specs/module-measurements.md`
 
 ## Context
 
-This diagram scopes the operator goal of inspecting voltage and current for one charger module
-from an Infypower command `0x03` response.
+This diagram shows the operator goal of inspecting measurements returned by one charger
+module. It does not model sending a read request or any CAN transmission.
 
 ## Diagram
 
 ```mermaid
 flowchart LR
-    Operator[Operator]
-    subgraph System[CAN Sniffer]
-        UC1((Inspect individual module measurements))
-        UC2((Inspect an invalid module measurement frame))
+    Operator(("Operator"))
+    subgraph System["CAN Sniffer"]
+        subgraph Decode["Read-only protocol analysis"]
+            UC1(("Inspect individual module output measurements"))
+        end
     end
     Operator --> UC1
-    Operator --> UC2
-    UC2 -. "extends" .-> UC1
 ```
 
 ## Notes
 
-- The selected module address comes from the CAN identifier destination field.
-- Raw data and diagnostics remain visible when decoding fails.
+- The operator inspects a received response; the use case does not initiate transmission.
+- The observable result contains output voltage and output current with their units.

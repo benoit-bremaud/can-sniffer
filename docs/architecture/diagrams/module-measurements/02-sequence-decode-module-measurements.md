@@ -1,9 +1,12 @@
 # Sequence diagram — module measurements — command 0x03
 
+> **Feature**: issue #3 — [Decode individual charger module measurements](https://github.com/benoit-bremaud/can-sniffer/issues/3)
+> **Source specs**: `docs/architecture/specs/module-measurements.md`
+
 ## Context
 
 This sequence defines the pure decoding path for voltage and current in a valid command `0x03`
-response.
+response. Invalid frame metadata and payload length are preserved as diagnostics.
 
 ## Diagram
 
@@ -14,10 +17,14 @@ sequenceDiagram
     participant Result as Module measurements
 
     Decoder->>Measurements: decode(payload[0:8])
-    Measurements->>Measurements: read voltage bytes 0 to 3
-    Measurements->>Measurements: read current bytes 4 to 7
-    Measurements->>Result: create immutable measurements
-    Result-->>Decoder: voltage and current
+    alt payload has 8 bytes and command is 0x03
+        Measurements->>Measurements: read voltage bytes 0 to 3
+        Measurements->>Measurements: read current bytes 4 to 7
+        Measurements->>Result: create immutable measurements
+        Result-->>Decoder: voltage and current
+    else invalid metadata or payload
+        Measurements-->>Decoder: preserve frame and add diagnostic
+    end
 ```
 
 ## Notes
