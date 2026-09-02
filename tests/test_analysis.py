@@ -148,5 +148,20 @@ def test_temporal_analyzer_does_not_report_false_variation_after_filtering() -> 
     assert statistics.maximum_deviation_seconds == 0.0
 
 
+def test_temporal_analyzer_reports_zero_deviation_for_one_valid_interval() -> None:
+    records = [
+        CapturedFrame(0.0, captured(0x123).result),
+        CapturedFrame(0.0, captured(0x123).result),
+        CapturedFrame(1.0, captured(0x123).result),
+    ]
+
+    statistics = TemporalAnalyzer.summarize(records)[0]
+
+    assert statistics.observed_period_seconds == 0.5
+    assert statistics.minimum_interval_seconds == 1.0
+    assert statistics.maximum_interval_seconds == 1.0
+    assert statistics.maximum_deviation_seconds == 0.0
+
+
 def test_temporal_analyzer_handles_empty_capture() -> None:
     assert TemporalAnalyzer.summarize([]) == ()
