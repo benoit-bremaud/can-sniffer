@@ -1,10 +1,13 @@
 """Minimal PySide6 user interface for read-only CAN capture."""
 
 import logging
+import time
+from pathlib import Path
 from typing import Protocol
 
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -15,6 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from can_sniffer.analysis import CapturedFrame, CsvExporter, FrameFilter
 from can_sniffer.capture import CaptureConfiguration
 from can_sniffer.protocol import DecodeResult
 
@@ -44,17 +48,31 @@ class CaptureWindow(QMainWindow):
         super().__init__()
         self._controller = controller
         self._capturing = False
+        self._display_paused = False
+        self._capture_started_at = 0.0
+        self._records: list[CapturedFrame] = []
+        self._frame_filter = FrameFilter()
         self._timer = QTimer(self)
         self._timer.setInterval(50)
         self._timer.timeout.connect(self._poll_capture)
 
         self.channel_input = QLineEdit("can0")
         self.channel_input.setAccessibleName("CAN channel")
+        self.filter_input = QLineEdit()
+        self.filter_input.setPlaceholderText("IDs, e.g. 0x123, 0x456")
+        self.filter_input.setAccessibleName("CAN identifier filter")
         self.start_button = QPushButton("Start")
         self.start_button.setAccessibleName("Start capture")
         self.stop_button = QPushButton("Stop")
         self.stop_button.setAccessibleName("Stop capture")
         self.stop_button.setEnabled(False)
+        self.pause_button = QPushButton("Pause display")
+        self.pause_button.setAccessibleName("Pause display")
+        self.pause_button.setEnabled(False)
+        self.clear_button = QPushButton("Clear")
+        self.clear_button.setAccessibleName("Clear displayed frames")
+        self.export_button = QPushButton("Export CSV")
+        self.export_button.setAccessibleName("Export captured frames")
         self.status_label = QLabel("Ready")
         self.frame_list = QListWidget()
         self.frame_list.setAccessibleName("Captured CAN frames")
@@ -62,8 +80,13 @@ class CaptureWindow(QMainWindow):
         controls = QHBoxLayout()
         controls.addWidget(QLabel("Channel:"))
         controls.addWidget(self.channel_input)
+        controls.addWidget(QLabel("Filter:"))
+        controls.addWidget(self.filter_input)
         controls.addWidget(self.start_button)
         controls.addWidget(self.stop_button)
+        controls.addWidget(self.pause_button)
+        controls.addWidget(self.clear_button)
+        controls.addWidget(self.export_button)
 
         central_widget = QWidget()
         layout = QVBoxLayout(central_widget)
@@ -76,6 +99,10 @@ class CaptureWindow(QMainWindow):
 
         self.start_button.clicked.connect(self.start_capture)
         self.stop_button.clicked.connect(self.stop_capture)
+        self.pause_button.clicked.connect(self.toggle_display_pause)
+        self.clear_button.clicked.connect(self.clear_history)
+        self.export_button.clicked.connect(self.export_csv)
+        self.filter_input.textChanged.connect(self.apply_filter)
 
     def start_capture(self) -> None:
         """Start polling the configured channel."""
@@ -90,8 +117,12 @@ class CaptureWindow(QMainWindow):
             self.status_label.setText(f"Error: {error}")
             return
         self._capturing = True
+        self._display_paused = False
+        self._capture_started_at = time.monotonic()
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(True)
+        self.pause_button.setEnabled(True)
+        self.pause_button.setText("Pause display")
         self.status_label.setText(f"Capturing on {channel}")
         self._timer.start()
 
@@ -101,12 +132,47 @@ class CaptureWindow(QMainWindow):
         self._capturing = False
         self.start_button.setEnabled(True)
         self.stop_button.setEnabled(False)
+        self.pause_button.setEnabled(False)
         try:
             self._controller.stop()
         except Exception as error:
             self.status_label.setText(f"Error: {error}")
             return
         self.status_label.setText("Stopped")
+
+    def toggle_display_pause(self) -> None:
+        """Pause or resume display updates without stopping capture."""
+        self._display_paused = not self._display_paused
+        self.pause_button.setText("Resume display" if self._display_paused else "Pause display")
+        if not self._display_paused:
+            self._refresh_display()
+
+    def clear_history(self) -> None:
+        """Clear visible history while retaining captured records for export."""
+        self.frame_list.clear()
+
+    def apply_filter(self, text: str) -> None:
+        """Apply an identifier filter to the visible history."""
+        try:
+            self._frame_filter = FrameFilter.from_text(text)
+        except ValueError as error:
+            self.status_label.setText(f"Error: {error}")
+            return
+        self._refresh_display()
+
+    def export_csv(self) -> None:
+        """Export all retained records to a CSV file selected by the operator."""
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export CAN frames", "capture.csv", "CSV files (*.csv)"
+        )
+        if not path:
+            return
+        try:
+            Path(path).write_text(CsvExporter.to_csv(self._records), encoding="utf-8", newline="")
+        except OSError as error:
+            self.status_label.setText(f"Error: {error}")
+            return
+        self.status_label.setText(f"Exported {len(self._records)} frame(s)")
 
     def _stop_after_poll_error(self) -> None:
         """Stop capture while preserving the original polling error."""
@@ -132,9 +198,23 @@ class CaptureWindow(QMainWindow):
 
             if result is None:
                 return
-            self.frame_list.addItem(self._format_result(result))
-            while self.frame_list.count() > self._MAX_DISPLAYED_FRAMES:
-                self.frame_list.takeItem(0)
+            captured = CapturedFrame(time.monotonic() - self._capture_started_at, result)
+            self._records.append(captured)
+            if not self._display_paused and self._frame_filter.matches(captured):
+                self._add_to_display(captured)
+
+    def _add_to_display(self, captured: CapturedFrame) -> None:
+        self.frame_list.addItem(self._format_result(captured.result))
+        while self.frame_list.count() > self._MAX_DISPLAYED_FRAMES:
+            self.frame_list.takeItem(0)
+
+    def _refresh_display(self) -> None:
+        if self._display_paused:
+            return
+        self.frame_list.clear()
+        for captured in self._records:
+            if self._frame_filter.matches(captured):
+                self._add_to_display(captured)
 
     @staticmethod
     def _format_result(result: DecodeResult) -> str:

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from PySide6.QtWidgets import QApplication
 
@@ -83,6 +85,81 @@ def test_window_drains_available_frames_in_one_poll(qt_application: QApplication
     window._poll_capture()
 
     assert window.frame_list.count() == 3
+
+
+def test_window_filters_visible_history_without_stopping_capture(
+    qt_application: QApplication,
+) -> None:
+    del qt_application
+    results = [
+        DecodeResult(CanFrame(0x123, b"\x00"), None, "First"),
+        DecodeResult(CanFrame(0x456, b"\x01"), None, "Second"),
+    ]
+    window = CaptureWindow(FakeController(results))
+
+    window.start_capture()
+    window._poll_capture()
+    window.filter_input.setText("0x456")
+
+    assert window._capturing is True
+    assert window.frame_list.count() == 1
+    assert "0x456" in window.frame_list.item(0).text()
+
+
+def test_window_pause_retains_records_and_resume_refreshes_display(
+    qt_application: QApplication,
+) -> None:
+    del qt_application
+    results = [DecodeResult(CanFrame(0x123, b"\x00"), None, "Frame")]
+    window = CaptureWindow(FakeController(results))
+
+    window.start_capture()
+    window.toggle_display_pause()
+    window._poll_capture()
+
+    assert window.frame_list.count() == 0
+    assert len(window._records) == 1
+    assert window._capturing is True
+
+    window.toggle_display_pause()
+    assert window.frame_list.count() == 1
+
+
+def test_window_clear_history_keeps_records_for_export(qt_application: QApplication) -> None:
+    del qt_application
+    window = CaptureWindow(
+        FakeController([DecodeResult(CanFrame(0x123, b"\x00"), None, "Frame")])
+    )
+
+    window.start_capture()
+    window._poll_capture()
+    window.clear_history()
+
+    assert window.frame_list.count() == 0
+    assert len(window._records) == 1
+
+
+def test_window_exports_all_retained_records(
+    qt_application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    del qt_application
+    destination = tmp_path / "capture.csv"
+    monkeypatch.setattr(
+        "can_sniffer.ui.QFileDialog.getSaveFileName",
+        lambda *args: (str(destination), "CSV files (*.csv)"),
+    )
+    window = CaptureWindow(
+        FakeController([DecodeResult(CanFrame(0x123, b"\x00"), None, "Frame")])
+    )
+
+    window.start_capture()
+    window._poll_capture()
+    window.export_csv()
+
+    assert "Exported 1 frame" in window.status_label.text()
+    assert "description" in destination.read_text(encoding="utf-8")
 
 
 def test_window_keeps_bounded_display_history(
