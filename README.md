@@ -34,3 +34,9 @@ Run the quality checks from `.venv-test`:
 .venv-test/bin/ruff check .
 .venv-test/bin/mypy
 ```
+
+Start the graphical application from the work environment:
+
+```bash
+.venv/bin/can-sniffer
+```

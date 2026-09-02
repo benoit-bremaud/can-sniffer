@@ -14,6 +14,9 @@ dependencies = [
     "PySide6>=6.8,<7",
 ]
 
+[project.scripts]
+can-sniffer = "can_sniffer.app:main"
+
 [project.optional-dependencies]
 dev = ["mypy>=1.14,<2", "pytest>=8.3,<9", "pytest-cov>=6,<7", "ruff>=0.9,<1"]
 
