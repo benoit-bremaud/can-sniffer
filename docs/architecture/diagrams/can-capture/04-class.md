@@ -25,11 +25,15 @@ classDiagram
         +close()
     }
     class CaptureSession {
-        +start()
+        +capture(CaptureConfiguration) Iterator~DecodeResult~
         +stop()
+    }
+    class ProtocolDecoder {
+        +decode(CanFrame) DecodeResult
     }
     CanCapturePort <|.. SocketCanAdapter
     CaptureSession --> CanCapturePort
+    CaptureSession --> ProtocolDecoder
     CanCapturePort --> CaptureConfiguration
 ```
 

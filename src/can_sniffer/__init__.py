@@ -18,6 +18,7 @@ from can_sniffer.protocol import (
     ProtocolDecoder,
     SystemMeasurements,
 )
+from can_sniffer.session import CaptureSession
 
 __all__ = [
     "CanFrame",
@@ -34,4 +35,5 @@ __all__ = [
     "SystemMeasurements",
     "SocketCanAdapter",
     "receive_frames",
+    "CaptureSession",
 ]
