@@ -3,7 +3,7 @@ from PySide6.QtWidgets import QApplication
 
 from can_sniffer.app import create_application, create_capture_window
 from can_sniffer.capture import CaptureConfiguration
-from can_sniffer.protocol import CanFrame, DecodeResult
+from can_sniffer.protocol import CanFrame, DecodeResult, SystemMeasurements
 from can_sniffer.ui import CaptureWindow
 
 
@@ -44,6 +44,24 @@ def test_window_starts_and_displays_decoded_frame(qt_application: QApplication) 
     assert controller.configurations == [CaptureConfiguration(channel="can0")]
     assert window.frame_list.count() == 1
     assert "0x123 [01 02]" in window.frame_list.item(0).text()
+
+
+def test_window_displays_decoded_system_measurements(
+    qt_application: QApplication,
+) -> None:
+    del qt_application
+    result = DecodeResult(
+        CanFrame(0x02813FF0, bytes.fromhex("43 FA 00 00 42 48 00 00")),
+        None,
+        "Decoded Infypower frame",
+        system_measurements=SystemMeasurements(500.0, 50.0),
+    )
+    window = CaptureWindow(FakeController([result]))
+
+    window.start_capture()
+    window._poll_capture()
+
+    assert "Vout=500 V, Iout=50 A" in window.frame_list.item(0).text()
 
 
 def test_window_rejects_empty_channel(qt_application: QApplication) -> None:

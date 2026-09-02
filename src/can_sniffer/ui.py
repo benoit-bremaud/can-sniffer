@@ -121,5 +121,31 @@ class CaptureWindow(QMainWindow):
         """Format one decoded result for the operator's event list."""
         frame = result.frame
         data = frame.data.hex(" ")
+        decoded_values: list[str] = []
+        if result.system_measurements is not None:
+            system_measurements = result.system_measurements
+            decoded_values.append(
+                f"Vout={system_measurements.output_voltage_volts:g} V, "
+                f"Iout={system_measurements.total_output_current_amperes:g} A"
+            )
+        if result.module_measurements is not None:
+            module_measurements = result.module_measurements
+            decoded_values.append(
+                f"Module Vout={module_measurements.output_voltage_volts:g} V, "
+                f"Iout={module_measurements.output_current_amperes:g} A"
+            )
+        if result.ac_input_measurements is not None:
+            ac_measurements = result.ac_input_measurements
+            decoded_values.append(
+                f"AC={ac_measurements.first_phase_voltage_volts:g}/"
+                f"{ac_measurements.second_phase_voltage_volts:g}/"
+                f"{ac_measurements.third_phase_voltage_volts:g} V"
+            )
+        if result.module_availability is not None:
+            module_availability = result.module_availability
+            decoded_values.append(
+                f"Available={module_availability.available_current_amperes:g} A"
+            )
+        details = f" | {'; '.join(decoded_values)}" if decoded_values else ""
         diagnostics = f" | {'; '.join(result.diagnostics)}" if result.diagnostics else ""
-        return f"0x{frame.arbitration_id:X} [{data}]{diagnostics}"
+        return f"0x{frame.arbitration_id:X} [{data}]{details}{diagnostics}"
