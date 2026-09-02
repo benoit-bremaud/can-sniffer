@@ -40,6 +40,19 @@ def test_capture_session_opens_decodes_and_closes_on_timeout() -> None:
     assert port.closed is True
 
 
+def test_capture_session_poll_keeps_session_open_after_timeout() -> None:
+    port = FakePort([])
+    session = CaptureSession(port, ProtocolDecoder())
+
+    session.start(CaptureConfiguration(channel="can0"))
+    result = session.poll(timeout=0)
+
+    assert result is None
+    assert port.closed is False
+    session.stop()
+    assert port.closed is True
+
+
 def test_capture_session_stop_ends_loop_after_current_frame() -> None:
     port = FakePort(
         [

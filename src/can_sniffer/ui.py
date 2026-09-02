@@ -1,6 +1,5 @@
 """Minimal PySide6 user interface for read-only CAN capture."""
 
-from collections.abc import Iterator
 from typing import Protocol
 
 from PySide6.QtCore import QTimer
@@ -22,10 +21,11 @@ from can_sniffer.protocol import DecodeResult
 class CaptureController(Protocol):
     """Application contract consumed by the capture window."""
 
-    def capture(
-        self, configuration: CaptureConfiguration, timeout: float | None = None
-    ) -> Iterator[DecodeResult]:
-        """Return a decoded capture iterator."""
+    def start(self, configuration: CaptureConfiguration) -> None:
+        """Start a capture session."""
+
+    def poll(self, timeout: float | None = None) -> DecodeResult | None:
+        """Poll for one decoded result without ending the session on timeout."""
 
     def stop(self) -> None:
         """Request capture termination."""
@@ -37,7 +37,7 @@ class CaptureWindow(QMainWindow):
     def __init__(self, controller: CaptureController) -> None:
         super().__init__()
         self._controller = controller
-        self._capture: Iterator[DecodeResult] | None = None
+        self._capturing = False
         self._timer = QTimer(self)
         self._timer.setInterval(50)
         self._timer.timeout.connect(self._poll_capture)
@@ -78,9 +78,12 @@ class CaptureWindow(QMainWindow):
             self.status_label.setText("Error: CAN channel is required")
             return
 
-        self._capture = self._controller.capture(
-            CaptureConfiguration(channel=channel), timeout=0
-        )
+        try:
+            self._controller.start(CaptureConfiguration(channel=channel))
+        except Exception as error:
+            self.status_label.setText(f"Error: {error}")
+            return
+        self._capturing = True
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(True)
         self.status_label.setText(f"Capturing on {channel}")
@@ -90,30 +93,27 @@ class CaptureWindow(QMainWindow):
         """Stop polling and finalize the active capture iterator."""
         self._controller.stop()
         self._timer.stop()
-        if self._capture is not None:
-            next(self._capture, None)
-            self._capture = None
+        self._capturing = False
         self.start_button.setEnabled(True)
         self.stop_button.setEnabled(False)
         self.status_label.setText("Stopped")
 
     def _poll_capture(self) -> None:
-        if self._capture is None:
+        if not self._capturing:
             return
         try:
-            result = next(self._capture)
-        except StopIteration:
-            self.stop_capture()
-            return
+            result = self._controller.poll(timeout=0)
         except Exception as error:
             self._timer.stop()
             self._controller.stop()
-            self._capture = None
+            self._capturing = False
             self.start_button.setEnabled(True)
             self.stop_button.setEnabled(False)
             self.status_label.setText(f"Error: {error}")
             return
 
+        if result is None:
+            return
         self.frame_list.addItem(self._format_result(result))
 
     @staticmethod

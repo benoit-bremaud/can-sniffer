@@ -14,24 +14,41 @@ class CaptureSession:
         self._decoder = decoder
         self._capturing = False
 
+    def start(self, configuration: CaptureConfiguration) -> None:
+        """Open the capture port and mark the session as active."""
+        if self._capturing:
+            raise RuntimeError("CAN capture is already running")
+        try:
+            self._port.open(configuration)
+        except Exception:
+            self._port.close()
+            raise
+        self._capturing = True
+
+    def poll(self, timeout: float | None = None) -> DecodeResult | None:
+        """Decode one frame, or return None when polling times out."""
+        if not self._capturing:
+            raise RuntimeError("CAN capture is not running")
+        frame = self._port.receive(timeout)
+        if frame is None:
+            return None
+        return self._decoder.decode(frame)
+
     def capture(
         self, configuration: CaptureConfiguration, timeout: float | None = None
     ) -> Iterator[DecodeResult]:
         """Yield decoded frames until timeout, stop, or a port exception."""
-        if self._capturing:
-            raise RuntimeError("CAN capture is already running")
-
-        self._capturing = True
+        self.start(configuration)
         try:
-            self._port.open(configuration)
             for frame in receive_frames(self._port, timeout):
                 if not self._capturing:
                     return
                 yield self._decoder.decode(frame)
         finally:
-            self._port.close()
-            self._capturing = False
+            self.stop()
 
     def stop(self) -> None:
         """Request that the active capture loop stop after its current frame."""
-        self._capturing = False
+        if self._capturing:
+            self._capturing = False
+            self._port.close()

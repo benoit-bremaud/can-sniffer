@@ -1,5 +1,3 @@
-from collections.abc import Iterator
-
 import pytest
 from PySide6.QtWidgets import QApplication
 
@@ -11,16 +9,16 @@ from can_sniffer.ui import CaptureWindow
 
 class FakeController:
     def __init__(self, results: list[DecodeResult]) -> None:
-        self.results = results
+        self.results = iter(results)
         self.configurations: list[CaptureConfiguration] = []
         self.stop_called = False
 
-    def capture(
-        self, configuration: CaptureConfiguration, timeout: float | None = None
-    ) -> Iterator[DecodeResult]:
-        del timeout
+    def start(self, configuration: CaptureConfiguration) -> None:
         self.configurations.append(configuration)
-        yield from self.results
+
+    def poll(self, timeout: float | None = None) -> DecodeResult | None:
+        del timeout
+        return next(self.results, None)
 
     def stop(self) -> None:
         self.stop_called = True
@@ -60,6 +58,20 @@ def test_window_rejects_empty_channel(qt_application: QApplication) -> None:
     assert "required" in window.status_label.text()
 
 
+def test_window_remains_capturing_when_no_frame_is_available(
+    qt_application: QApplication,
+) -> None:
+    del qt_application
+    window = CaptureWindow(FakeController([]))
+
+    window.start_capture()
+    window._poll_capture()
+
+    assert window.status_label.text() == "Capturing on can0"
+    assert window.start_button.isEnabled() is False
+    assert window.stop_button.isEnabled() is True
+
+
 def test_window_stop_requests_controller_and_closes_capture(qt_application: QApplication) -> None:
     del qt_application
     controller = FakeController([])
@@ -77,12 +89,9 @@ def test_window_displays_capture_error(qt_application: QApplication) -> None:
     del qt_application
 
     class FailingController(FakeController):
-        def capture(
-            self, configuration: CaptureConfiguration, timeout: float | None = None
-        ) -> Iterator[DecodeResult]:
-            del configuration, timeout
+        def start(self, configuration: CaptureConfiguration) -> None:
+            del configuration
             raise OSError("CAN unavailable")
-            yield  # pragma: no cover
 
     window = CaptureWindow(FailingController([]))
 
