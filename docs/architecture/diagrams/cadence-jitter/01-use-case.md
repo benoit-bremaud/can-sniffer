@@ -1,6 +1,6 @@
 # Use-case diagram — cadence jitter analysis — consult capture cadence
 
-> **Feature**: epic #23 — [Add CAN frame cadence jitter analysis](../../../../issues/23)
+> **Feature**: epic #23 — [Add CAN frame cadence jitter analysis](https://github.com/benoit-bremaud/can-sniffer/issues/23)
 > **Source specs**: `docs/architecture/specs/cadence-jitter-analysis.md` §Objective, §Presentation
 
 ## Context

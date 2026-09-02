@@ -1,7 +1,7 @@
 # CAN frame cadence jitter analysis
 
 > **Feature**: epic #23 — [Add CAN frame cadence jitter analysis](https://github.com/benoit-bremaud/can-sniffer/issues/23)
-> **Status**: planned
+> **Status**: implemented
 
 ## Objective
 
@@ -16,7 +16,7 @@ first timestamp, last timestamp, average period, and frequency metrics, and adds
 
 - minimum observed interval;
 - maximum observed interval;
-- maximum absolute deviation from the average period.
+- maximum absolute deviation from the mean of valid positive intervals.
 
 The statistics remain descriptive. Version 1 does not classify frames as anomalous, apply a
 tolerance threshold, trigger alarms, or transmit CAN frames.
@@ -43,9 +43,11 @@ tolerance threshold, trigger alarms, or transmit CAN frames.
 
 ## Presentation
 
-The existing statistics area displays the three additional values for each identifier.
-Unavailable values use the existing `n/a` convention. The feature does not change capture,
-filtering, export, or protocol decoding behaviour.
+The existing statistics area displays the three additional values for each identifier. The
+maximum deviation is labelled `interval_deviation_max` to distinguish its valid-interval
+baseline from the historical `period` metric. Unavailable values use the existing `n/a`
+convention. The feature does not change capture, filtering, export, or protocol decoding
+behaviour.
 
 ## Verification
 

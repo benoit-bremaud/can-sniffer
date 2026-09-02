@@ -19,7 +19,7 @@ class CapturedFrame:
 
 @dataclass(frozen=True, slots=True)
 class IdentifierStatistics:
-    """Temporal statistics for one CAN arbitration identifier."""
+    """Temporal and cadence-variation statistics for one CAN identifier."""
 
     arbitration_id: int
     count: int
@@ -27,6 +27,9 @@ class IdentifierStatistics:
     last_timestamp_seconds: float
     observed_period_seconds: float | None
     frequency_hz: float | None
+    minimum_interval_seconds: float | None
+    maximum_interval_seconds: float | None
+    maximum_interval_deviation_seconds: float | None
 
 
 class TemporalAnalyzer:
@@ -47,6 +50,15 @@ class TemporalAnalyzer:
             elapsed = last_timestamp - first_timestamp
             period = elapsed / (count - 1) if count > 1 and elapsed > 0 else None
             frequency = 1 / period if period is not None else None
+            intervals = TemporalAnalyzer._positive_intervals(captured_records)
+            minimum_interval = min(intervals) if intervals else None
+            maximum_interval = max(intervals) if intervals else None
+            variation_baseline = sum(intervals) / len(intervals) if intervals else None
+            maximum_interval_deviation = (
+                max(abs(interval - variation_baseline) for interval in intervals)
+                if variation_baseline is not None
+                else None
+            )
             statistics.append(
                 IdentifierStatistics(
                     arbitration_id,
@@ -55,9 +67,21 @@ class TemporalAnalyzer:
                     last_timestamp,
                     period,
                     frequency,
+                    minimum_interval,
+                    maximum_interval,
+                    maximum_interval_deviation,
                 )
             )
         return tuple(statistics)
+
+    @staticmethod
+    def _positive_intervals(records: list[CapturedFrame]) -> list[float]:
+        """Return positive intervals between consecutive records in capture order."""
+        return [
+            current.timestamp_seconds - previous.timestamp_seconds
+            for previous, current in zip(records, records[1:], strict=False)
+            if current.timestamp_seconds > previous.timestamp_seconds
+        ]
 
 
 @dataclass(frozen=True, slots=True)

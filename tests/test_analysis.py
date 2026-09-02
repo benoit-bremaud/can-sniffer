@@ -74,6 +74,25 @@ def test_temporal_analyzer_groups_and_calculates_cadence() -> None:
     assert statistics[1].count == 2
     assert statistics[1].observed_period_seconds == 1.0
     assert statistics[1].frequency_hz == 1.0
+    assert statistics[1].minimum_interval_seconds == 1.0
+    assert statistics[1].maximum_interval_seconds == 1.0
+    assert statistics[1].maximum_interval_deviation_seconds == 0.0
+
+
+def test_temporal_analyzer_calculates_interval_variation() -> None:
+    records = [
+        CapturedFrame(0.0, captured(0x123).result),
+        CapturedFrame(1.0, captured(0x123).result),
+        CapturedFrame(3.0, captured(0x123).result),
+        CapturedFrame(6.0, captured(0x123).result),
+    ]
+
+    statistics = TemporalAnalyzer.summarize(records)[0]
+
+    assert statistics.observed_period_seconds == 2.0
+    assert statistics.minimum_interval_seconds == 1.0
+    assert statistics.maximum_interval_seconds == 3.0
+    assert statistics.maximum_interval_deviation_seconds == 1.0
 
 
 def test_temporal_analyzer_handles_single_and_invalid_intervals() -> None:
@@ -87,8 +106,61 @@ def test_temporal_analyzer_handles_single_and_invalid_intervals() -> None:
 
     assert statistics[0].observed_period_seconds is None
     assert statistics[0].frequency_hz is None
+    assert statistics[0].minimum_interval_seconds is None
+    assert statistics[0].maximum_interval_seconds is None
+    assert statistics[0].maximum_interval_deviation_seconds is None
     assert statistics[1].observed_period_seconds is None
     assert statistics[1].frequency_hz is None
+    assert statistics[1].minimum_interval_seconds is None
+    assert statistics[1].maximum_interval_seconds is None
+    assert statistics[1].maximum_interval_deviation_seconds is None
+
+
+def test_temporal_analyzer_ignores_non_increasing_intervals() -> None:
+    records = [
+        CapturedFrame(0.0, captured(0x123).result),
+        CapturedFrame(2.0, captured(0x123).result),
+        CapturedFrame(1.0, captured(0x123).result),
+        CapturedFrame(4.0, captured(0x123).result),
+    ]
+
+    statistics = TemporalAnalyzer.summarize(records)[0]
+
+    assert statistics.observed_period_seconds == 4 / 3
+    assert statistics.minimum_interval_seconds == 2.0
+    assert statistics.maximum_interval_seconds == 3.0
+    assert statistics.maximum_interval_deviation_seconds == 0.5
+
+
+def test_temporal_analyzer_does_not_report_false_variation_after_filtering() -> None:
+    records = [
+        CapturedFrame(0.0, captured(0x123).result),
+        CapturedFrame(2.0, captured(0x123).result),
+        CapturedFrame(1.0, captured(0x123).result),
+        CapturedFrame(3.0, captured(0x123).result),
+    ]
+
+    statistics = TemporalAnalyzer.summarize(records)[0]
+
+    assert statistics.observed_period_seconds == 1.0
+    assert statistics.minimum_interval_seconds == 2.0
+    assert statistics.maximum_interval_seconds == 2.0
+    assert statistics.maximum_interval_deviation_seconds == 0.0
+
+
+def test_temporal_analyzer_reports_zero_deviation_for_one_valid_interval() -> None:
+    records = [
+        CapturedFrame(0.0, captured(0x123).result),
+        CapturedFrame(0.0, captured(0x123).result),
+        CapturedFrame(1.0, captured(0x123).result),
+    ]
+
+    statistics = TemporalAnalyzer.summarize(records)[0]
+
+    assert statistics.observed_period_seconds == 0.5
+    assert statistics.minimum_interval_seconds == 1.0
+    assert statistics.maximum_interval_seconds == 1.0
+    assert statistics.maximum_interval_deviation_seconds == 0.0
 
 
 def test_temporal_analyzer_handles_empty_capture() -> None:
