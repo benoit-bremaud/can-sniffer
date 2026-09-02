@@ -146,6 +146,19 @@ class CaptureWindow(QMainWindow):
             decoded_values.append(
                 f"Available={module_availability.available_current_amperes:g} A"
             )
+        if result.module_ratings is not None:
+            module_ratings = result.module_ratings
+            decoded_values.append(
+                f"Ratings={module_ratings.minimum_output_voltage_volts:g}-"
+                f"{module_ratings.maximum_output_voltage_volts:g} V, "
+                f"{module_ratings.maximum_output_current_amperes:g} A, "
+                f"{module_ratings.rated_output_power_watts:g} W"
+            )
+        if result.ambient_temperature_celsius is not None:
+            decoded_values.append(f"Ambient={result.ambient_temperature_celsius} °C")
+        if result.module_state is not None:
+            faults = result.module_state.active_faults()
+            decoded_values.append(f"Faults={', '.join(faults) if faults else 'none'}")
         details = f" | {'; '.join(decoded_values)}" if decoded_values else ""
         diagnostics = f" | {'; '.join(result.diagnostics)}" if result.diagnostics else ""
         return f"0x{frame.arbitration_id:X} [{data}]{details}{diagnostics}"

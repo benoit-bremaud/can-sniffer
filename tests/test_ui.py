@@ -3,7 +3,13 @@ from PySide6.QtWidgets import QApplication
 
 from can_sniffer.app import create_application, create_capture_window
 from can_sniffer.capture import CaptureConfiguration
-from can_sniffer.protocol import CanFrame, DecodeResult, SystemMeasurements
+from can_sniffer.protocol import (
+    CanFrame,
+    DecodeResult,
+    ModuleRatings,
+    ModuleState,
+    SystemMeasurements,
+)
 from can_sniffer.ui import CaptureWindow
 
 
@@ -62,6 +68,29 @@ def test_window_displays_decoded_system_measurements(
     window._poll_capture()
 
     assert "Vout=500 V, Iout=50 A" in window.frame_list.item(0).text()
+
+
+def test_window_displays_module_diagnostics_and_ratings(
+    qt_application: QApplication,
+) -> None:
+    del qt_application
+    result = DecodeResult(
+        CanFrame(0x028400F0, bytes.fromhex("00 00 00 00 FE 80 41 01")),
+        None,
+        "Decoded Infypower frame",
+        module_state=ModuleState(module_fault=True, output_short=True),
+        ambient_temperature_celsius=-2,
+        module_ratings=ModuleRatings(750, 100, 25.6, 15000),
+    )
+    window = CaptureWindow(FakeController([result]))
+
+    window.start_capture()
+    window._poll_capture()
+
+    item_text = window.frame_list.item(0).text()
+    assert "Ratings=100-750 V, 25.6 A, 15000 W" in item_text
+    assert "Ambient=-2 °C" in item_text
+    assert "Faults=module_fault, output_short" in item_text
 
 
 def test_window_rejects_empty_channel(qt_application: QApplication) -> None:
