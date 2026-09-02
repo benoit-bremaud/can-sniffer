@@ -1,0 +1,233 @@
+import pytest
+from PySide6.QtWidgets import QApplication
+
+from can_sniffer.app import create_application, create_capture_window
+from can_sniffer.capture import CaptureConfiguration
+from can_sniffer.protocol import (
+    CanFrame,
+    DecodeResult,
+    ModuleRatings,
+    ModuleState,
+    SystemMeasurements,
+)
+from can_sniffer.ui import CaptureWindow
+
+
+class FakeController:
+    def __init__(self, results: list[DecodeResult]) -> None:
+        self.results = iter(results)
+        self.configurations: list[CaptureConfiguration] = []
+        self.stop_called = False
+
+    def start(self, configuration: CaptureConfiguration) -> None:
+        self.configurations.append(configuration)
+
+    def poll(self, timeout: float | None = None) -> DecodeResult | None:
+        del timeout
+        return next(self.results, None)
+
+    def stop(self) -> None:
+        self.stop_called = True
+
+
+@pytest.fixture
+def qt_application() -> QApplication:
+    application = QApplication.instance()
+    if application is None or not isinstance(application, QApplication):
+        application = QApplication([])
+    return application
+
+
+def test_window_starts_and_displays_decoded_frame(qt_application: QApplication) -> None:
+    del qt_application
+    result = DecodeResult(CanFrame(0x123, b"\x01\x02"), None, "Undecoded frame")
+    controller = FakeController([result])
+    window = CaptureWindow(controller)
+
+    window.start_capture()
+    window._poll_capture()
+
+    assert controller.configurations == [CaptureConfiguration(channel="can0")]
+    assert window.frame_list.count() == 1
+    assert "0x123 [01 02]" in window.frame_list.item(0).text()
+    assert "Undecoded frame" in window.frame_list.item(0).text()
+
+
+def test_window_displays_decoded_system_measurements(
+    qt_application: QApplication,
+) -> None:
+    del qt_application
+    result = DecodeResult(
+        CanFrame(0x02813FF0, bytes.fromhex("43 FA 00 00 42 48 00 00")),
+        None,
+        "Decoded Infypower frame",
+        system_measurements=SystemMeasurements(500.0, 50.0),
+    )
+    window = CaptureWindow(FakeController([result]))
+
+    window.start_capture()
+    window._poll_capture()
+
+    assert "Vout=500 V, Iout=50 A" in window.frame_list.item(0).text()
+
+
+def test_window_drains_available_frames_in_one_poll(qt_application: QApplication) -> None:
+    del qt_application
+    results = [
+        DecodeResult(CanFrame(0x100 + index, b"\x00"), None, "Undecoded frame")
+        for index in range(3)
+    ]
+    window = CaptureWindow(FakeController(results))
+
+    window.start_capture()
+    window._poll_capture()
+
+    assert window.frame_list.count() == 3
+
+
+def test_window_keeps_bounded_display_history(
+    qt_application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del qt_application
+    monkeypatch.setattr(CaptureWindow, "_MAX_DISPLAYED_FRAMES", 2)
+    results = [
+        DecodeResult(CanFrame(0x100 + index, b"\x00"), None, "Undecoded frame")
+        for index in range(3)
+    ]
+    window = CaptureWindow(FakeController(results))
+
+    window.start_capture()
+    window._poll_capture()
+
+    assert window.frame_list.count() == 2
+    assert "0x101" in window.frame_list.item(0).text()
+
+
+def test_window_displays_module_diagnostics_and_ratings(
+    qt_application: QApplication,
+) -> None:
+    del qt_application
+    result = DecodeResult(
+        CanFrame(0x028400F0, bytes.fromhex("00 00 00 00 FE 80 41 01")),
+        None,
+        "Decoded Infypower frame",
+        module_state=ModuleState(module_fault=True, output_short=True),
+        ambient_temperature_celsius=-2,
+        module_ratings=ModuleRatings(750, 100, 25.6, 15000),
+    )
+    window = CaptureWindow(FakeController([result]))
+
+    window.start_capture()
+    window._poll_capture()
+
+    item_text = window.frame_list.item(0).text()
+    assert "Ratings=100-750 V, 25.6 A, 15000 W" in item_text
+    assert "Ambient=-2 °C" in item_text
+    assert "Faults=module_fault, output_short" in item_text
+
+
+def test_window_rejects_empty_channel(qt_application: QApplication) -> None:
+    del qt_application
+    controller = FakeController([])
+    window = CaptureWindow(controller)
+    window.channel_input.clear()
+
+    window.start_capture()
+
+    assert controller.configurations == []
+    assert "required" in window.status_label.text()
+
+
+def test_window_remains_capturing_when_no_frame_is_available(
+    qt_application: QApplication,
+) -> None:
+    del qt_application
+    window = CaptureWindow(FakeController([]))
+
+    window.start_capture()
+    window._poll_capture()
+
+    assert window.status_label.text() == "Capturing on can0"
+    assert window.start_button.isEnabled() is False
+    assert window.stop_button.isEnabled() is True
+
+
+def test_window_stop_requests_controller_and_closes_capture(qt_application: QApplication) -> None:
+    del qt_application
+    controller = FakeController([])
+    window = CaptureWindow(controller)
+
+    window.start_capture()
+    window.stop_capture()
+
+    assert controller.stop_called is True
+    assert window.start_button.isEnabled() is True
+    assert window.stop_button.isEnabled() is False
+
+
+def test_window_stop_reports_cleanup_error_and_resets_controls(
+    qt_application: QApplication,
+) -> None:
+    del qt_application
+
+    class FailingController(FakeController):
+        def stop(self) -> None:
+            raise RuntimeError("close failed")
+
+    window = CaptureWindow(FailingController([]))
+    window.start_capture()
+    window.stop_capture()
+
+    assert "close failed" in window.status_label.text()
+    assert window.start_button.isEnabled() is True
+    assert window.stop_button.isEnabled() is False
+
+
+def test_window_preserves_poll_error_when_cleanup_also_fails(
+    qt_application: QApplication,
+) -> None:
+    del qt_application
+
+    class FailingController(FakeController):
+        def poll(self, timeout: float | None = None) -> DecodeResult | None:
+            del timeout
+            raise OSError("receive failed")
+
+        def stop(self) -> None:
+            raise RuntimeError("close failed")
+
+    window = CaptureWindow(FailingController([]))
+    window.start_capture()
+    window._poll_capture()
+
+    assert "receive failed" in window.status_label.text()
+    assert "close failed" not in window.status_label.text()
+    assert window.start_button.isEnabled() is True
+    assert window.stop_button.isEnabled() is False
+
+
+def test_window_displays_capture_error(qt_application: QApplication) -> None:
+    del qt_application
+
+    class FailingController(FakeController):
+        def start(self, configuration: CaptureConfiguration) -> None:
+            del configuration
+            raise OSError("CAN unavailable")
+
+    window = CaptureWindow(FailingController([]))
+
+    window.start_capture()
+    window._poll_capture()
+
+    assert "CAN unavailable" in window.status_label.text()
+
+
+def test_application_composition_builds_capture_window(
+    qt_application: QApplication,
+) -> None:
+    application = create_application([])
+    window = create_capture_window()
+
+    assert application is qt_application
+    assert isinstance(window, CaptureWindow)

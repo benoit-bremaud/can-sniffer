@@ -11,6 +11,7 @@ The first release is read-only and targets CAN 2.0B extended frames at 125 kbit/
 - Add or update UML design documentation before implementing a feature.
 - Use Angular Conventional Commits: `type(scope): description`.
 - Run tests, linting, and type checks before opening a pull request.
+- Every feature must maintain at least 90% test coverage with happy-path, sad-path, and edge-case tests.
 - Do not merge pull requests without explicit user approval.
 
 ## Safety

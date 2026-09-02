@@ -14,6 +14,9 @@ dependencies = [
     "PySide6>=6.8,<7",
 ]
 
+[project.scripts]
+can-sniffer = "can_sniffer.app:main"
+
 [project.optional-dependencies]
 dev = ["mypy>=1.14,<2", "pytest>=8.3,<9", "pytest-cov>=6,<7", "ruff>=0.9,<1"]
 
@@ -21,7 +24,7 @@ dev = ["mypy>=1.14,<2", "pytest>=8.3,<9", "pytest-cov>=6,<7", "ruff>=0.9,<1"]
 packages = ["src/can_sniffer"]
 
 [tool.pytest.ini_options]
-addopts = "--strict-markers --strict-config"
+addopts = "--strict-markers --strict-config --cov=can_sniffer --cov-report=term-missing --cov-fail-under=90"
 testpaths = ["tests"]
 
 [tool.ruff]
