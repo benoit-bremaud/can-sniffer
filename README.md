@@ -36,6 +36,9 @@ Run the quality checks from `.venv-test`:
 .venv-test/bin/mypy
 ```
 
+The same quality checks run automatically on pushes to `main` and on pull requests. GitHub
+Actions also runs secret detection, CodeQL analysis, dependency review, and OpenSSF Scorecard.
+
 Start the graphical application from the work environment:
 
 ```bash
