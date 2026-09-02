@@ -103,7 +103,11 @@ class CsvExporter:
                 f"{measurements.third_phase_voltage_volts:g} V"
             )
         if result.module_availability is not None:
-            values.append(f"Available={result.module_availability.available_current_amperes:g} A")
+            availability = result.module_availability
+            values.append(
+                f"External V={availability.external_voltage_volts:g} V, "
+                f"Available={availability.available_current_amperes:g} A"
+            )
         if result.module_ratings is not None:
             ratings = result.module_ratings
             values.append(

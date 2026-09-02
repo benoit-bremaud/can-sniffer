@@ -139,6 +139,45 @@ def test_window_clear_history_keeps_records_for_export(qt_application: QApplicat
     assert len(window._records) == 1
 
 
+def test_window_clear_history_is_preserved_when_filter_changes(
+    qt_application: QApplication,
+) -> None:
+    del qt_application
+    results = [
+        DecodeResult(CanFrame(0x123, b"\x00"), None, "Old"),
+        DecodeResult(CanFrame(0x456, b"\x01"), None, "New"),
+    ]
+    window = CaptureWindow(FakeController(results))
+
+    window.start_capture()
+    window._poll_capture()
+    window.clear_history()
+    window.filter_input.setText("0x123")
+
+    assert window.frame_list.count() == 0
+    assert len(window._records) == 2
+
+
+def test_window_uses_one_timestamp_origin_across_capture_sessions(
+    qt_application: QApplication,
+) -> None:
+    del qt_application
+    controller = FakeController(
+        [DecodeResult(CanFrame(0x123, b"\x00"), None, "First")]
+    )
+    window = CaptureWindow(controller)
+
+    window.start_capture()
+    window._poll_capture()
+    first_timestamp = window._records[0].timestamp_seconds
+    window.stop_capture()
+    controller.results = iter([DecodeResult(CanFrame(0x456, b"\x01"), None, "Second")])
+    window.start_capture()
+    window._poll_capture()
+
+    assert window._records[1].timestamp_seconds >= first_timestamp
+
+
 def test_window_exports_all_retained_records(
     qt_application: QApplication,
     monkeypatch: pytest.MonkeyPatch,

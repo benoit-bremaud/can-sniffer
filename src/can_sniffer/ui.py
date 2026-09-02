@@ -49,8 +49,10 @@ class CaptureWindow(QMainWindow):
         self._controller = controller
         self._capturing = False
         self._display_paused = False
-        self._capture_started_at = 0.0
+        self._capture_origin = time.monotonic()
+        self._channel = ""
         self._records: list[CapturedFrame] = []
+        self._display_start_index = 0
         self._frame_filter = FrameFilter()
         self._timer = QTimer(self)
         self._timer.setInterval(50)
@@ -118,7 +120,7 @@ class CaptureWindow(QMainWindow):
             return
         self._capturing = True
         self._display_paused = False
-        self._capture_started_at = time.monotonic()
+        self._channel = channel
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(True)
         self.pause_button.setEnabled(True)
@@ -149,6 +151,7 @@ class CaptureWindow(QMainWindow):
 
     def clear_history(self) -> None:
         """Clear visible history while retaining captured records for export."""
+        self._display_start_index = len(self._records)
         self.frame_list.clear()
 
     def apply_filter(self, text: str) -> None:
@@ -158,6 +161,10 @@ class CaptureWindow(QMainWindow):
         except ValueError as error:
             self.status_label.setText(f"Error: {error}")
             return
+        if self._capturing:
+            self.status_label.setText(f"Capturing on {self._channel}")
+        else:
+            self.status_label.setText("Ready")
         self._refresh_display()
 
     def export_csv(self) -> None:
@@ -198,7 +205,7 @@ class CaptureWindow(QMainWindow):
 
             if result is None:
                 return
-            captured = CapturedFrame(time.monotonic() - self._capture_started_at, result)
+            captured = CapturedFrame(time.monotonic() - self._capture_origin, result)
             self._records.append(captured)
             if not self._display_paused and self._frame_filter.matches(captured):
                 self._add_to_display(captured)
@@ -212,9 +219,13 @@ class CaptureWindow(QMainWindow):
         if self._display_paused:
             return
         self.frame_list.clear()
-        for captured in self._records:
-            if self._frame_filter.matches(captured):
-                self._add_to_display(captured)
+        matching = [
+            captured
+            for captured in self._records[self._display_start_index :]
+            if self._frame_filter.matches(captured)
+        ]
+        for captured in matching[-self._MAX_DISPLAYED_FRAMES :]:
+            self._add_to_display(captured)
 
     @staticmethod
     def _format_result(result: DecodeResult) -> str:

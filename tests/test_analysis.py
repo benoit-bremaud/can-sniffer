@@ -4,7 +4,7 @@ from io import StringIO
 import pytest
 
 from can_sniffer.analysis import CapturedFrame, CsvExporter, FrameFilter
-from can_sniffer.protocol import CanFrame, DecodeResult
+from can_sniffer.protocol import CanFrame, DecodeResult, ModuleAvailability
 
 
 def captured(identifier: int = 0x123, description: str = "Decoded") -> CapturedFrame:
@@ -46,3 +46,16 @@ def test_csv_exporter_returns_headers_for_empty_capture() -> None:
         "timestamp_seconds,arbitration_id,is_extended_id,is_error_frame,data,"
         "description,decoded_values,diagnostics\n"
     )
+
+
+def test_csv_exporter_includes_external_voltage() -> None:
+    result = DecodeResult(
+        CanFrame(0x123, b"\x01\x02"),
+        None,
+        "Decoded",
+        module_availability=ModuleAvailability(400.0, 25.0),
+    )
+
+    content = CsvExporter.to_csv([CapturedFrame(0.0, result)])
+
+    assert "External V=400 V, Available=25 A" in content
