@@ -27,6 +27,7 @@ from can_sniffer.analysis import (
 )
 from can_sniffer.capture import CaptureConfiguration
 from can_sniffer.protocol import DecodeResult
+from can_sniffer.replay import CsvCaptureLoader, ReplayController
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,8 @@ class CaptureWindow(QMainWindow):
         self._channel = ""
         self._records: list[CapturedFrame] = []
         self._display_start_index = 0
+        self._replay = ReplayController()
+        self._replay_last_tick = 0.0
         self._frame_filter = FrameFilter()
         self._timer = QTimer(self)
         self._timer.setInterval(50)
@@ -83,11 +86,22 @@ class CaptureWindow(QMainWindow):
         self.export_button.setAccessibleName("Export captured frames")
         self.statistics_button = QPushButton("Refresh statistics")
         self.statistics_button.setAccessibleName("Refresh CAN statistics")
+        self.load_replay_button = QPushButton("Load CSV")
+        self.load_replay_button.setAccessibleName("Load CSV replay")
+        self.play_replay_button = QPushButton("Play")
+        self.play_replay_button.setAccessibleName("Play CSV replay")
+        self.pause_replay_button = QPushButton("Pause")
+        self.pause_replay_button.setAccessibleName("Pause CSV replay")
+        self.reset_replay_button = QPushButton("Reset")
+        self.reset_replay_button.setAccessibleName("Reset CSV replay")
         self.status_label = QLabel("Ready")
         self.frame_list = QListWidget()
         self.frame_list.setAccessibleName("Captured CAN frames")
         self.statistics_list = QListWidget()
         self.statistics_list.setAccessibleName("CAN identifier statistics")
+        self._replay_timer = QTimer(self)
+        self._replay_timer.setInterval(50)
+        self._replay_timer.timeout.connect(self._advance_replay)
 
         controls = QHBoxLayout()
         controls.addWidget(QLabel("Channel:"))
@@ -100,6 +114,10 @@ class CaptureWindow(QMainWindow):
         controls.addWidget(self.clear_button)
         controls.addWidget(self.export_button)
         controls.addWidget(self.statistics_button)
+        controls.addWidget(self.load_replay_button)
+        controls.addWidget(self.play_replay_button)
+        controls.addWidget(self.pause_replay_button)
+        controls.addWidget(self.reset_replay_button)
 
         central_widget = QWidget()
         layout = QVBoxLayout(central_widget)
@@ -118,6 +136,10 @@ class CaptureWindow(QMainWindow):
         self.clear_button.clicked.connect(self.clear_history)
         self.export_button.clicked.connect(self.export_csv)
         self.statistics_button.clicked.connect(self.refresh_statistics)
+        self.load_replay_button.clicked.connect(self.load_replay)
+        self.play_replay_button.clicked.connect(self.play_replay)
+        self.pause_replay_button.clicked.connect(self.pause_replay)
+        self.reset_replay_button.clicked.connect(self.reset_replay)
         self.filter_input.textChanged.connect(self.apply_filter)
 
     def start_capture(self) -> None:
@@ -203,6 +225,62 @@ class CaptureWindow(QMainWindow):
         self.statistics_list.clear()
         for item in statistics:
             self.statistics_list.addItem(self._format_statistics(item))
+
+    def load_replay(self) -> None:
+        """Load a CSV capture without opening a CAN port."""
+        if self._capturing:
+            self.status_label.setText("Error: stop live capture before loading a replay")
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load CAN capture", "", "CSV files (*.csv)"
+        )
+        if not path:
+            return
+        try:
+            records = CsvCaptureLoader.load(Path(path))
+        except ValueError as error:
+            self.status_label.setText(f"Error: {error}")
+            return
+        self._replay.load(records)
+        self._records.clear()
+        self._display_start_index = 0
+        self.frame_list.clear()
+        self.statistics_list.clear()
+        self.status_label.setText(f"Loaded {len(records)} replay frame(s)")
+
+    def play_replay(self) -> None:
+        """Start or resume local CSV playback."""
+        self._replay.play()
+        self._replay_last_tick = time.monotonic()
+        self._replay_timer.start()
+        self.status_label.setText("Replaying CSV capture")
+
+    def pause_replay(self) -> None:
+        """Pause local CSV playback."""
+        self._replay.pause()
+        self._replay_timer.stop()
+        self.status_label.setText("Replay paused")
+
+    def reset_replay(self) -> None:
+        """Reset local playback and clear replayed records from the views."""
+        self._replay.reset()
+        self._replay_timer.stop()
+        self._records.clear()
+        self._display_start_index = 0
+        self.frame_list.clear()
+        self.statistics_list.clear()
+        self.status_label.setText("Replay reset")
+
+    def _advance_replay(self) -> None:
+        now = time.monotonic()
+        due = self._replay.advance(now - self._replay_last_tick)
+        self._replay_last_tick = now
+        for captured in due:
+            self._records.append(captured)
+            if not self._display_paused and self._frame_filter.matches(captured):
+                self._add_to_display(captured)
+        if not due and not self._replay.is_playing:
+            self._replay_timer.stop()
 
     @staticmethod
     def _format_statistics(item: IdentifierStatistics) -> str:

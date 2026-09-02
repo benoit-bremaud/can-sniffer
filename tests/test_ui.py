@@ -104,6 +104,47 @@ def test_window_refreshes_identifier_statistics(qt_application: QApplication) ->
     assert "frequency=" in window.statistics_list.item(0).text()
 
 
+def test_window_loads_and_replays_csv_capture(
+    qt_application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    del qt_application
+    source = tmp_path / "capture.csv"
+    source.write_text(
+        "timestamp_seconds,arbitration_id,is_extended_id,is_error_frame,data,description,"
+        "decoded_values,diagnostics\n"
+        "0.000000,0x123,true,false,01 02,First,,\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "can_sniffer.ui.QFileDialog.getOpenFileName",
+        lambda *args: (str(source), "CSV files (*.csv)"),
+    )
+    clock = iter([10.0, 10.0])
+    monkeypatch.setattr("can_sniffer.ui.time.monotonic", lambda: next(clock))
+    window = CaptureWindow(FakeController([]))
+
+    window.load_replay()
+    window.play_replay()
+    window._advance_replay()
+
+    assert window.frame_list.count() == 1
+    window.pause_replay()
+    window.reset_replay()
+    assert window.frame_list.count() == 0
+
+
+def test_window_rejects_loading_replay_while_capturing(qt_application: QApplication) -> None:
+    del qt_application
+    window = CaptureWindow(FakeController([]))
+    window.start_capture()
+
+    window.load_replay()
+
+    assert "stop live capture" in window.status_label.text()
+
+
 def test_window_filters_visible_history_without_stopping_capture(
     qt_application: QApplication,
 ) -> None:
