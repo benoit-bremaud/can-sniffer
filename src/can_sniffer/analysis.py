@@ -1,6 +1,7 @@
 """Pure helpers for analysing and exporting captured CAN frames."""
 
 import csv
+from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from io import StringIO
@@ -14,6 +15,49 @@ class CapturedFrame:
 
     timestamp_seconds: float
     result: DecodeResult
+
+
+@dataclass(frozen=True, slots=True)
+class IdentifierStatistics:
+    """Temporal statistics for one CAN arbitration identifier."""
+
+    arbitration_id: int
+    count: int
+    first_timestamp_seconds: float
+    last_timestamp_seconds: float
+    observed_period_seconds: float | None
+    frequency_hz: float | None
+
+
+class TemporalAnalyzer:
+    """Calculate safe temporal statistics from retained capture records."""
+
+    @staticmethod
+    def summarize(records: Iterable[CapturedFrame]) -> tuple[IdentifierStatistics, ...]:
+        """Group records by identifier and calculate cadence statistics."""
+        grouped: defaultdict[int, list[CapturedFrame]] = defaultdict(list)
+        for captured in records:
+            grouped[captured.result.frame.arbitration_id].append(captured)
+
+        statistics: list[IdentifierStatistics] = []
+        for arbitration_id, captured_records in sorted(grouped.items()):
+            count = len(captured_records)
+            first_timestamp = captured_records[0].timestamp_seconds
+            last_timestamp = captured_records[-1].timestamp_seconds
+            elapsed = last_timestamp - first_timestamp
+            period = elapsed / (count - 1) if count > 1 and elapsed > 0 else None
+            frequency = 1 / period if period is not None else None
+            statistics.append(
+                IdentifierStatistics(
+                    arbitration_id,
+                    count,
+                    first_timestamp,
+                    last_timestamp,
+                    period,
+                    frequency,
+                )
+            )
+        return tuple(statistics)
 
 
 @dataclass(frozen=True, slots=True)

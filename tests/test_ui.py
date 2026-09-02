@@ -87,6 +87,23 @@ def test_window_drains_available_frames_in_one_poll(qt_application: QApplication
     assert window.frame_list.count() == 3
 
 
+def test_window_refreshes_identifier_statistics(qt_application: QApplication) -> None:
+    del qt_application
+    results = [
+        DecodeResult(CanFrame(0x123, b"\x00"), None, "First"),
+        DecodeResult(CanFrame(0x123, b"\x01"), None, "Second"),
+    ]
+    window = CaptureWindow(FakeController(results))
+
+    window.start_capture()
+    window._poll_capture()
+    window.refresh_statistics()
+
+    assert window.statistics_list.count() == 1
+    assert "0x123: count=2" in window.statistics_list.item(0).text()
+    assert "frequency=" in window.statistics_list.item(0).text()
+
+
 def test_window_filters_visible_history_without_stopping_capture(
     qt_application: QApplication,
 ) -> None:
