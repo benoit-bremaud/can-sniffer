@@ -330,17 +330,17 @@ class CaptureWindow(QMainWindow):
             if item.maximum_interval_seconds is None
             else f"{item.maximum_interval_seconds:g} s"
         )
-        maximum_deviation = (
+        maximum_interval_deviation = (
             "n/a"
-            if item.maximum_deviation_seconds is None
-            else f"{item.maximum_deviation_seconds:g} s"
+            if item.maximum_interval_deviation_seconds is None
+            else f"{item.maximum_interval_deviation_seconds:g} s"
         )
         return (
             f"0x{item.arbitration_id:X}: count={item.count}, "
             f"first={item.first_timestamp_seconds:g} s, "
             f"last={item.last_timestamp_seconds:g} s, period={period}, frequency={frequency}, "
             f"interval_min={minimum_interval}, interval_max={maximum_interval}, "
-            f"deviation_max={maximum_deviation}"
+            f"interval_deviation_max={maximum_interval_deviation}"
         )
 
     def _stop_after_poll_error(self) -> None:

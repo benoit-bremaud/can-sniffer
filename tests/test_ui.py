@@ -105,7 +105,7 @@ def test_window_refreshes_identifier_statistics(qt_application: QApplication) ->
     assert "frequency=" in window.statistics_list.item(0).text()
     assert "interval_min=" in window.statistics_list.item(0).text()
     assert "interval_max=" in window.statistics_list.item(0).text()
-    assert "deviation_max=" in window.statistics_list.item(0).text()
+    assert "interval_deviation_max=" in window.statistics_list.item(0).text()
 
 
 def test_window_loads_and_replays_csv_capture(

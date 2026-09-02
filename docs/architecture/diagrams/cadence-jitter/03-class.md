@@ -1,6 +1,6 @@
 # Class diagram — cadence jitter analysis — statistics model
 
-> **Feature**: epic #23 — [Add CAN frame cadence jitter analysis](../../../../issues/23)
+> **Feature**: epic #23 — [Add CAN frame cadence jitter analysis](https://github.com/benoit-bremaud/can-sniffer/issues/23)
 > **Source specs**: `docs/architecture/specs/cadence-jitter-analysis.md` §Scope, §Rules
 
 ## Context
@@ -14,26 +14,25 @@ configurable threshold that the feature does not require.
 ```mermaid
 classDiagram
     class CapturedFrame {
-        +float timestamp
-        +int arbitration_id
-        +bytes data
+        +float timestamp_seconds
+        +DecodeResult result
     }
 
     class IdentifierStatistics {
         +int arbitration_id
         +int count
-        +float first_timestamp
-        +float last_timestamp
+        +float first_timestamp_seconds
+        +float last_timestamp_seconds
         +float|None observed_period_seconds
         +float|None frequency_hz
         +float|None minimum_interval_seconds
         +float|None maximum_interval_seconds
-        +float|None maximum_deviation_seconds
+        +float|None maximum_interval_deviation_seconds
     }
 
     class TemporalAnalyzer {
         +summarize(records) tuple
-        -calculate_intervals(records) list
+        -_positive_intervals(records) list
     }
 
     TemporalAnalyzer --> CapturedFrame : reads

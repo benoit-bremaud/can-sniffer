@@ -29,7 +29,7 @@ class IdentifierStatistics:
     frequency_hz: float | None
     minimum_interval_seconds: float | None
     maximum_interval_seconds: float | None
-    maximum_deviation_seconds: float | None
+    maximum_interval_deviation_seconds: float | None
 
 
 class TemporalAnalyzer:
@@ -54,7 +54,7 @@ class TemporalAnalyzer:
             minimum_interval = min(intervals) if intervals else None
             maximum_interval = max(intervals) if intervals else None
             variation_baseline = sum(intervals) / len(intervals) if intervals else None
-            maximum_deviation = (
+            maximum_interval_deviation = (
                 max(abs(interval - variation_baseline) for interval in intervals)
                 if variation_baseline is not None
                 else None
@@ -69,7 +69,7 @@ class TemporalAnalyzer:
                     frequency,
                     minimum_interval,
                     maximum_interval,
-                    maximum_deviation,
+                    maximum_interval_deviation,
                 )
             )
         return tuple(statistics)
