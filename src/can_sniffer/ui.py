@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QMainWindow,
     QPushButton,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -26,8 +27,10 @@ from can_sniffer.analysis import (
     TemporalAnalyzer,
 )
 from can_sniffer.capture import CaptureConfiguration
+from can_sniffer.preferences import DisplayPreferences, IdentifierFormat
 from can_sniffer.protocol import DecodeResult
 from can_sniffer.replay import CsvCaptureLoader, ReplayController
+from can_sniffer.settings_ui import SettingsWidget
 
 logger = logging.getLogger(__name__)
 
@@ -51,9 +54,16 @@ class CaptureWindow(QMainWindow):
     _MAX_FRAMES_PER_TICK = 100
     _MAX_DISPLAYED_FRAMES = 10_000
 
-    def __init__(self, controller: CaptureController) -> None:
+    def __init__(
+        self,
+        controller: CaptureController,
+        preferences: DisplayPreferences,
+        settings_widget: SettingsWidget,
+    ) -> None:
         super().__init__()
         self._controller = controller
+        self._preferences = preferences
+        self.settings_widget = settings_widget
         self._capturing = False
         self._display_paused = False
         self._capture_origin: float | None = None
@@ -122,14 +132,18 @@ class CaptureWindow(QMainWindow):
         controls.addWidget(self.stop_replay_button)
         controls.addWidget(self.reset_replay_button)
 
-        central_widget = QWidget()
-        layout = QVBoxLayout(central_widget)
+        capture_widget = QWidget()
+        layout = QVBoxLayout(capture_widget)
         layout.addLayout(controls)
         layout.addWidget(self.status_label)
-        layout.addWidget(QLabel("Statistics:"))
+        self.statistics_label = QLabel("Statistics:")
+        layout.addWidget(self.statistics_label)
         layout.addWidget(self.statistics_list)
         layout.addWidget(self.frame_list)
-        self.setCentralWidget(central_widget)
+        self.tabs = QTabWidget()
+        self.tabs.addTab(capture_widget, "Capture")
+        self.tabs.addTab(self.settings_widget, "Settings")
+        self.setCentralWidget(self.tabs)
         self.setWindowTitle("CAN Sniffer")
         self.resize(720, 480)
 
@@ -145,6 +159,19 @@ class CaptureWindow(QMainWindow):
         self.stop_replay_button.clicked.connect(self.stop_replay)
         self.reset_replay_button.clicked.connect(self.reset_replay)
         self.filter_input.textChanged.connect(self.apply_filter)
+        self.settings_widget.preferences_changed.connect(self.apply_preferences)
+        self.apply_preferences(preferences)
+
+    def apply_preferences(self, preferences: DisplayPreferences) -> None:
+        """Apply display preferences immediately without changing retained data or state."""
+        self._preferences = preferences
+        visible = preferences.show_temporal_statistics
+        self.statistics_label.setVisible(visible)
+        self.statistics_list.setVisible(visible)
+        self.statistics_button.setVisible(visible)
+        self._render_display()
+        if visible:
+            self.refresh_statistics()
 
     def start_capture(self) -> None:
         """Start polling the configured channel."""
@@ -311,34 +338,35 @@ class CaptureWindow(QMainWindow):
             self._replay_timer.stop()
             self.status_label.setText("Replay finished")
 
-    @staticmethod
-    def _format_statistics(item: IdentifierStatistics) -> str:
+    def _format_statistics(self, item: IdentifierStatistics) -> str:
         """Format one identifier statistics row for the operator."""
+        number = self._format_number
         period = (
             "n/a"
             if item.observed_period_seconds is None
-            else f"{item.observed_period_seconds:g} s"
+            else f"{number(item.observed_period_seconds)} s"
         )
-        frequency = "n/a" if item.frequency_hz is None else f"{item.frequency_hz:g} Hz"
+        frequency = "n/a" if item.frequency_hz is None else f"{number(item.frequency_hz)} Hz"
         minimum_interval = (
             "n/a"
             if item.minimum_interval_seconds is None
-            else f"{item.minimum_interval_seconds:g} s"
+            else f"{number(item.minimum_interval_seconds)} s"
         )
         maximum_interval = (
             "n/a"
             if item.maximum_interval_seconds is None
-            else f"{item.maximum_interval_seconds:g} s"
+            else f"{number(item.maximum_interval_seconds)} s"
         )
         maximum_interval_deviation = (
             "n/a"
             if item.maximum_interval_deviation_seconds is None
-            else f"{item.maximum_interval_deviation_seconds:g} s"
+            else f"{number(item.maximum_interval_deviation_seconds)} s"
         )
         return (
-            f"0x{item.arbitration_id:X}: count={item.count}, "
-            f"first={item.first_timestamp_seconds:g} s, "
-            f"last={item.last_timestamp_seconds:g} s, period={period}, frequency={frequency}, "
+            f"{self._format_identifier(item.arbitration_id)}: count={item.count}, "
+            f"first={number(item.first_timestamp_seconds)} s, "
+            f"last={number(item.last_timestamp_seconds)} s, "
+            f"period={period}, frequency={frequency}, "
             f"interval_min={minimum_interval}, interval_max={maximum_interval}, "
             f"interval_deviation_max={maximum_interval_deviation}"
         )
@@ -384,6 +412,9 @@ class CaptureWindow(QMainWindow):
     def _refresh_display(self) -> None:
         if self._display_paused:
             return
+        self._render_display()
+
+    def _render_display(self) -> None:
         self.frame_list.clear()
         matching = [
             captured
@@ -393,50 +424,65 @@ class CaptureWindow(QMainWindow):
         for captured in matching[-self._MAX_DISPLAYED_FRAMES :]:
             self._add_to_display(captured)
 
-    @staticmethod
-    def _format_result(result: DecodeResult) -> str:
+    def _format_number(self, value: float) -> str:
+        return f"{value:.{self._preferences.numeric_precision}f}"
+
+    def _format_identifier(self, arbitration_id: int) -> str:
+        if self._preferences.identifier_format is IdentifierFormat.DECIMAL:
+            return str(arbitration_id)
+        return f"0x{arbitration_id:X}"
+
+    def _format_result(self, result: DecodeResult) -> str:
         """Format one decoded result for the operator's event list."""
         frame = result.frame
-        data = frame.data.hex(" ")
+        number = self._format_number
         decoded_values: list[str] = []
-        if result.system_measurements is not None:
+        if self._preferences.show_decoded_values and result.system_measurements is not None:
             system_measurements = result.system_measurements
             decoded_values.append(
-                f"Vout={system_measurements.output_voltage_volts:g} V, "
-                f"Iout={system_measurements.total_output_current_amperes:g} A"
+                f"Vout={number(system_measurements.output_voltage_volts)} V, "
+                f"Iout={number(system_measurements.total_output_current_amperes)} A"
             )
-        if result.module_measurements is not None:
+        if self._preferences.show_decoded_values and result.module_measurements is not None:
             module_measurements = result.module_measurements
             decoded_values.append(
-                f"Module Vout={module_measurements.output_voltage_volts:g} V, "
-                f"Iout={module_measurements.output_current_amperes:g} A"
+                f"Module Vout={number(module_measurements.output_voltage_volts)} V, "
+                f"Iout={number(module_measurements.output_current_amperes)} A"
             )
-        if result.ac_input_measurements is not None:
+        if self._preferences.show_decoded_values and result.ac_input_measurements is not None:
             ac_measurements = result.ac_input_measurements
             decoded_values.append(
-                f"AC={ac_measurements.first_phase_voltage_volts:g}/"
-                f"{ac_measurements.second_phase_voltage_volts:g}/"
-                f"{ac_measurements.third_phase_voltage_volts:g} V"
+                f"AC={number(ac_measurements.first_phase_voltage_volts)}/"
+                f"{number(ac_measurements.second_phase_voltage_volts)}/"
+                f"{number(ac_measurements.third_phase_voltage_volts)} V"
             )
-        if result.module_availability is not None:
+        if self._preferences.show_decoded_values and result.module_availability is not None:
             module_availability = result.module_availability
             decoded_values.append(
-                f"Available={module_availability.available_current_amperes:g} A"
+                f"Available={number(module_availability.available_current_amperes)} A"
             )
-        if result.module_ratings is not None:
+        if self._preferences.show_decoded_values and result.module_ratings is not None:
             module_ratings = result.module_ratings
             decoded_values.append(
-                f"Ratings={module_ratings.minimum_output_voltage_volts:g}-"
-                f"{module_ratings.maximum_output_voltage_volts:g} V, "
-                f"{module_ratings.maximum_output_current_amperes:g} A, "
-                f"{module_ratings.rated_output_power_watts:g} W"
+                f"Ratings={number(module_ratings.minimum_output_voltage_volts)}-"
+                f"{number(module_ratings.maximum_output_voltage_volts)} V, "
+                f"{number(module_ratings.maximum_output_current_amperes)} A, "
+                f"{number(module_ratings.rated_output_power_watts)} W"
             )
-        if result.ambient_temperature_celsius is not None:
+        if self._preferences.show_decoded_values and result.ambient_temperature_celsius is not None:
             decoded_values.append(f"Ambient={result.ambient_temperature_celsius} °C")
-        if result.module_state is not None:
+        if self._preferences.show_decoded_values and result.module_state is not None:
             faults = result.module_state.active_faults()
             decoded_values.append(f"Faults={', '.join(faults) if faults else 'none'}")
         description = f" | {result.description}" if result.description else ""
         details = f" | {'; '.join(decoded_values)}" if decoded_values else ""
-        diagnostics = f" | {'; '.join(result.diagnostics)}" if result.diagnostics else ""
-        return f"0x{frame.arbitration_id:X} [{data}]{description}{details}{diagnostics}"
+        diagnostics = (
+            f" | {'; '.join(result.diagnostics)}"
+            if self._preferences.show_diagnostics and result.diagnostics
+            else ""
+        )
+        payload = f" [{frame.data.hex(' ')}]" if self._preferences.show_raw_payload else ""
+        return (
+            f"{self._format_identifier(frame.arbitration_id)}"
+            f"{payload}{description}{details}{diagnostics}"
+        )

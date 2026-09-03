@@ -2,16 +2,21 @@
 
 import sys
 
+from PySide6.QtCore import QCoreApplication, QSettings
 from PySide6.QtWidgets import QApplication
 
 from can_sniffer.capture import SocketCanAdapter
 from can_sniffer.protocol import ProtocolDecoder
+from can_sniffer.qt_settings import QtSettingsRepository
 from can_sniffer.session import CaptureSession
+from can_sniffer.settings_ui import SettingsWidget
 from can_sniffer.ui import CaptureWindow
 
 
 def create_application(arguments: list[str] | None = None) -> QApplication:
     """Return the existing Qt application or create one for the current process."""
+    QCoreApplication.setOrganizationName("benoit-bremaud")
+    QCoreApplication.setApplicationName("can-sniffer")
     application = QApplication.instance()
     if isinstance(application, QApplication):
         return application
@@ -21,7 +26,10 @@ def create_application(arguments: list[str] | None = None) -> QApplication:
 def create_capture_window() -> CaptureWindow:
     """Build the production capture dependency graph."""
     session = CaptureSession(SocketCanAdapter(), ProtocolDecoder())
-    return CaptureWindow(session)
+    repository = QtSettingsRepository(QSettings())
+    preferences = repository.load()
+    settings_widget = SettingsWidget(preferences, repository)
+    return CaptureWindow(session, preferences, settings_widget)
 
 
 def main() -> int:

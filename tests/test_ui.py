@@ -1,11 +1,13 @@
 from pathlib import Path
 
 import pytest
+from PySide6.QtCore import QCoreApplication
 from PySide6.QtWidgets import QApplication
 
 from can_sniffer.analysis import CapturedFrame
 from can_sniffer.app import create_application, create_capture_window
 from can_sniffer.capture import CaptureConfiguration
+from can_sniffer.preferences import DisplayPreferences, IdentifierFormat
 from can_sniffer.protocol import (
     CanFrame,
     DecodeResult,
@@ -13,7 +15,8 @@ from can_sniffer.protocol import (
     ModuleState,
     SystemMeasurements,
 )
-from can_sniffer.ui import CaptureWindow
+from can_sniffer.settings_ui import SettingsWidget
+from can_sniffer.ui import CaptureController, CaptureWindow
 
 
 class FakeController:
@@ -33,6 +36,26 @@ class FakeController:
         self.stop_called = True
 
 
+class MemoryPreferencesRepository:
+    def __init__(self, preferences: DisplayPreferences) -> None:
+        self.preferences = preferences
+
+    def load(self) -> DisplayPreferences:
+        return self.preferences
+
+    def save(self, preferences: DisplayPreferences) -> None:
+        self.preferences = preferences
+
+
+def create_test_window(
+    controller: CaptureController,
+    preferences: DisplayPreferences | None = None,
+) -> CaptureWindow:
+    selected = preferences or DisplayPreferences.defaults()
+    repository = MemoryPreferencesRepository(selected)
+    return CaptureWindow(controller, selected, SettingsWidget(selected, repository))
+
+
 @pytest.fixture
 def qt_application() -> QApplication:
     application = QApplication.instance()
@@ -45,7 +68,7 @@ def test_window_starts_and_displays_decoded_frame(qt_application: QApplication) 
     del qt_application
     result = DecodeResult(CanFrame(0x123, b"\x01\x02"), None, "Undecoded frame")
     controller = FakeController([result])
-    window = CaptureWindow(controller)
+    window = create_test_window(controller)
 
     window.start_capture()
     window._poll_capture()
@@ -66,12 +89,12 @@ def test_window_displays_decoded_system_measurements(
         "Decoded Infypower frame",
         system_measurements=SystemMeasurements(500.0, 50.0),
     )
-    window = CaptureWindow(FakeController([result]))
+    window = create_test_window(FakeController([result]))
 
     window.start_capture()
     window._poll_capture()
 
-    assert "Vout=500 V, Iout=50 A" in window.frame_list.item(0).text()
+    assert "Vout=500.000 V, Iout=50.000 A" in window.frame_list.item(0).text()
 
 
 def test_window_drains_available_frames_in_one_poll(qt_application: QApplication) -> None:
@@ -80,7 +103,7 @@ def test_window_drains_available_frames_in_one_poll(qt_application: QApplication
         DecodeResult(CanFrame(0x100 + index, b"\x00"), None, "Undecoded frame")
         for index in range(3)
     ]
-    window = CaptureWindow(FakeController(results))
+    window = create_test_window(FakeController(results))
 
     window.start_capture()
     window._poll_capture()
@@ -94,7 +117,7 @@ def test_window_refreshes_identifier_statistics(qt_application: QApplication) ->
         DecodeResult(CanFrame(0x123, b"\x00"), None, "First"),
         DecodeResult(CanFrame(0x123, b"\x01"), None, "Second"),
     ]
-    window = CaptureWindow(FakeController(results))
+    window = create_test_window(FakeController(results))
 
     window.start_capture()
     window._poll_capture()
@@ -127,7 +150,7 @@ def test_window_loads_and_replays_csv_capture(
     )
     clock = iter([10.0, 10.0])
     monkeypatch.setattr("can_sniffer.ui.time.monotonic", lambda: next(clock))
-    window = CaptureWindow(FakeController([]))
+    window = create_test_window(FakeController([]))
 
     window.load_replay()
     window.play_replay()
@@ -155,7 +178,7 @@ def test_window_load_replay_resets_display_pause(
         "can_sniffer.ui.QFileDialog.getOpenFileName",
         lambda *args: (str(source), "CSV files (*.csv)"),
     )
-    window = CaptureWindow(FakeController([]))
+    window = create_test_window(FakeController([]))
     window._display_paused = True
     window.pause_button.setText("Resume display")
 
@@ -184,7 +207,7 @@ def test_window_reports_replay_completion(
     )
     clock = iter([10.0, 10.0])
     monkeypatch.setattr("can_sniffer.ui.time.monotonic", lambda: next(clock))
-    window = CaptureWindow(FakeController([]))
+    window = create_test_window(FakeController([]))
     window.load_replay()
     window.play_replay()
 
@@ -195,7 +218,7 @@ def test_window_reports_replay_completion(
 
 def test_window_rejects_loading_replay_while_capturing(qt_application: QApplication) -> None:
     del qt_application
-    window = CaptureWindow(FakeController([]))
+    window = create_test_window(FakeController([]))
     window.start_capture()
 
     window.load_replay()
@@ -205,7 +228,7 @@ def test_window_rejects_loading_replay_while_capturing(qt_application: QApplicat
 
 def test_window_rejects_replay_while_live_capture_is_active(qt_application: QApplication) -> None:
     del qt_application
-    window = CaptureWindow(FakeController([]))
+    window = create_test_window(FakeController([]))
     window.start_capture()
 
     window.play_replay()
@@ -215,7 +238,7 @@ def test_window_rejects_replay_while_live_capture_is_active(qt_application: QApp
 
 def test_window_rejects_live_capture_until_replay_is_reset(qt_application: QApplication) -> None:
     del qt_application
-    window = CaptureWindow(FakeController([]))
+    window = create_test_window(FakeController([]))
     window._replay.load(
         (
             CapturedFrame(0.0, DecodeResult(CanFrame(0x123, b"\x00"), None, "Frame")),
@@ -232,7 +255,7 @@ def test_window_reset_replay_does_not_clear_live_capture(
     qt_application: QApplication,
 ) -> None:
     del qt_application
-    window = CaptureWindow(FakeController([]))
+    window = create_test_window(FakeController([]))
     window.start_capture()
 
     window.reset_replay()
@@ -242,7 +265,7 @@ def test_window_reset_replay_does_not_clear_live_capture(
 
 def test_window_stop_replay_preserves_position(qt_application: QApplication) -> None:
     del qt_application
-    window = CaptureWindow(FakeController([]))
+    window = create_test_window(FakeController([]))
     window._replay.load(
         (CapturedFrame(0.0, DecodeResult(CanFrame(0x123, b"\x00"), None, "Frame")),)
     )
@@ -261,7 +284,7 @@ def test_window_filters_visible_history_without_stopping_capture(
         DecodeResult(CanFrame(0x123, b"\x00"), None, "First"),
         DecodeResult(CanFrame(0x456, b"\x01"), None, "Second"),
     ]
-    window = CaptureWindow(FakeController(results))
+    window = create_test_window(FakeController(results))
 
     window.start_capture()
     window._poll_capture()
@@ -277,7 +300,7 @@ def test_window_pause_retains_records_and_resume_refreshes_display(
 ) -> None:
     del qt_application
     results = [DecodeResult(CanFrame(0x123, b"\x00"), None, "Frame")]
-    window = CaptureWindow(FakeController(results))
+    window = create_test_window(FakeController(results))
 
     window.start_capture()
     window.toggle_display_pause()
@@ -293,7 +316,7 @@ def test_window_pause_retains_records_and_resume_refreshes_display(
 
 def test_window_clear_history_keeps_records_for_export(qt_application: QApplication) -> None:
     del qt_application
-    window = CaptureWindow(
+    window = create_test_window(
         FakeController([DecodeResult(CanFrame(0x123, b"\x00"), None, "Frame")])
     )
 
@@ -313,7 +336,7 @@ def test_window_clear_history_is_preserved_when_filter_changes(
         DecodeResult(CanFrame(0x123, b"\x00"), None, "Old"),
         DecodeResult(CanFrame(0x456, b"\x01"), None, "New"),
     ]
-    window = CaptureWindow(FakeController(results))
+    window = create_test_window(FakeController(results))
 
     window.start_capture()
     window._poll_capture()
@@ -331,7 +354,7 @@ def test_window_uses_one_timestamp_origin_across_capture_sessions(
     controller = FakeController(
         [DecodeResult(CanFrame(0x123, b"\x00"), None, "First")]
     )
-    window = CaptureWindow(controller)
+    window = create_test_window(controller)
 
     window.start_capture()
     window._poll_capture()
@@ -351,7 +374,7 @@ def test_window_starts_relative_timestamps_at_first_capture(
     del qt_application
     clock = iter([100.0, 101.5])
     monkeypatch.setattr("can_sniffer.ui.time.monotonic", lambda: next(clock))
-    window = CaptureWindow(
+    window = create_test_window(
         FakeController([DecodeResult(CanFrame(0x123, b"\x00"), None, "Frame")])
     )
 
@@ -372,7 +395,7 @@ def test_window_exports_all_retained_records(
         "can_sniffer.ui.QFileDialog.getSaveFileName",
         lambda *args: (str(destination), "CSV files (*.csv)"),
     )
-    window = CaptureWindow(
+    window = create_test_window(
         FakeController([DecodeResult(CanFrame(0x123, b"\x00"), None, "Frame")])
     )
 
@@ -394,7 +417,7 @@ def test_window_keeps_bounded_display_history(
         DecodeResult(CanFrame(0x100 + index, b"\x00"), None, "Undecoded frame")
         for index in range(3)
     ]
-    window = CaptureWindow(FakeController(results))
+    window = create_test_window(FakeController(results))
 
     window.start_capture()
     window._poll_capture()
@@ -415,13 +438,13 @@ def test_window_displays_module_diagnostics_and_ratings(
         ambient_temperature_celsius=-2,
         module_ratings=ModuleRatings(750, 100, 25.6, 15000),
     )
-    window = CaptureWindow(FakeController([result]))
+    window = create_test_window(FakeController([result]))
 
     window.start_capture()
     window._poll_capture()
 
     item_text = window.frame_list.item(0).text()
-    assert "Ratings=100-750 V, 25.6 A, 15000 W" in item_text
+    assert "Ratings=100.000-750.000 V, 25.600 A, 15000.000 W" in item_text
     assert "Ambient=-2 °C" in item_text
     assert "Faults=module_fault, output_short" in item_text
 
@@ -429,7 +452,7 @@ def test_window_displays_module_diagnostics_and_ratings(
 def test_window_rejects_empty_channel(qt_application: QApplication) -> None:
     del qt_application
     controller = FakeController([])
-    window = CaptureWindow(controller)
+    window = create_test_window(controller)
     window.channel_input.clear()
 
     window.start_capture()
@@ -442,7 +465,7 @@ def test_window_remains_capturing_when_no_frame_is_available(
     qt_application: QApplication,
 ) -> None:
     del qt_application
-    window = CaptureWindow(FakeController([]))
+    window = create_test_window(FakeController([]))
 
     window.start_capture()
     window._poll_capture()
@@ -455,7 +478,7 @@ def test_window_remains_capturing_when_no_frame_is_available(
 def test_window_stop_requests_controller_and_closes_capture(qt_application: QApplication) -> None:
     del qt_application
     controller = FakeController([])
-    window = CaptureWindow(controller)
+    window = create_test_window(controller)
 
     window.start_capture()
     window.stop_capture()
@@ -474,7 +497,7 @@ def test_window_stop_reports_cleanup_error_and_resets_controls(
         def stop(self) -> None:
             raise RuntimeError("close failed")
 
-    window = CaptureWindow(FailingController([]))
+    window = create_test_window(FailingController([]))
     window.start_capture()
     window.stop_capture()
 
@@ -496,7 +519,7 @@ def test_window_preserves_poll_error_when_cleanup_also_fails(
         def stop(self) -> None:
             raise RuntimeError("close failed")
 
-    window = CaptureWindow(FailingController([]))
+    window = create_test_window(FailingController([]))
     window.start_capture()
     window._poll_capture()
 
@@ -514,7 +537,7 @@ def test_window_displays_capture_error(qt_application: QApplication) -> None:
             del configuration
             raise OSError("CAN unavailable")
 
-    window = CaptureWindow(FailingController([]))
+    window = create_test_window(FailingController([]))
 
     window.start_capture()
     window._poll_capture()
@@ -530,3 +553,65 @@ def test_application_composition_builds_capture_window(
 
     assert application is qt_application
     assert isinstance(window, CaptureWindow)
+    assert QCoreApplication.organizationName() == "benoit-bremaud"
+    assert QCoreApplication.applicationName() == "can-sniffer"
+
+
+def test_window_applies_settings_without_changing_capture_state(
+    qt_application: QApplication,
+) -> None:
+    del qt_application
+    result = DecodeResult(
+        CanFrame(0x123, b"\x01\x02"),
+        None,
+        "Decoded Infypower frame",
+        system_measurements=SystemMeasurements(12.345, 0.126),
+        diagnostics=("diagnostic",),
+    )
+    window = create_test_window(FakeController([result]))
+    window.start_capture()
+    window._poll_capture()
+    retained = list(window._records)
+    window._display_paused = True
+
+    window.apply_preferences(
+        DisplayPreferences(
+            identifier_format=IdentifierFormat.DECIMAL,
+            numeric_precision=2,
+            show_raw_payload=False,
+            show_decoded_values=False,
+            show_diagnostics=False,
+            show_temporal_statistics=False,
+        )
+    )
+
+    assert window.frame_list.item(0).text() == "291 | Decoded Infypower frame"
+    assert window.statistics_label.isHidden()
+    assert window.statistics_list.isHidden()
+    assert window.statistics_button.isHidden()
+    assert window._capturing is True
+    assert window._display_paused is True
+    assert window._records == retained
+
+
+def test_window_reformats_retained_measurements_and_statistics(
+    qt_application: QApplication,
+) -> None:
+    del qt_application
+    result = DecodeResult(
+        CanFrame(0x123, b"\x01"),
+        None,
+        "Decoded Infypower frame",
+        system_measurements=SystemMeasurements(12.345, 0.126),
+    )
+    window = create_test_window(FakeController([result]))
+    window.start_capture()
+    window._poll_capture()
+
+    window.apply_preferences(DisplayPreferences(numeric_precision=2))
+
+    assert "Vout=12.35 V, Iout=0.13 A" in window.frame_list.item(0).text()
+    assert window.statistics_list.item(0).text().startswith("0x123: count=1, first=")
+    assert window.tabs.count() == 2
+    assert window.tabs.tabText(1) == "Settings"
+    assert not hasattr(window.settings_widget, "transmission")
