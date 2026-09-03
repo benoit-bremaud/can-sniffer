@@ -20,6 +20,11 @@ not change capture, protocol decoding, temporal calculations, or transmission sa
 | Show diagnostics | boolean | true | true, false |
 | Show temporal statistics | boolean | true | true, false |
 
+Numeric precision is the number of digits rendered after the decimal separator. It applies
+to decoded decimal measurements and temporal statistics, with trailing zeroes retained for
+stable output. For example, precision `3` renders `12.3` as `12.300` and `0.00123` as
+`0.001`. CAN identifiers, raw bytes, integer counts, and diagnostic text are unaffected.
+
 ## Rules
 
 1. `DisplayPreferences` is a framework-independent immutable value object.
@@ -40,6 +45,12 @@ not change capture, protocol decoding, temporal calculations, or transmission sa
 9. No preference enables CAN transmission or changes the SocketCAN interface state.
 
 ## Persistence keys
+
+The application bootstrap configures the stable `QSettings` namespace before creating a
+repository:
+
+- organization: `benoit-bremaud`;
+- application: `can-sniffer`.
 
 The Qt adapter owns stable keys under a `display` group:
 

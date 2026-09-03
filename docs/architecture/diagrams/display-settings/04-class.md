@@ -14,8 +14,8 @@ editing. It excludes capture and protocol classes whose behaviour is unchanged.
 classDiagram
     class IdentifierFormat {
         <<enumeration>>
-        HEXADECIMAL
-        DECIMAL
+        HEXADECIMAL = "hexadecimal"
+        DECIMAL = "decimal"
     }
 
     class DisplayPreferences {
@@ -56,5 +56,7 @@ classDiagram
 ## Notes
 
 - The repository protocol exists because persistence has a real test-substitution boundary.
+- Enumeration member names follow Python conventions; their quoted values are the stable strings
+  persisted by the Qt adapter.
 - Validation belongs to `DisplayPreferences`; storage only converts stable primitive values.
 - `SettingsWidget` edits preferences but does not own capture or decoding rules.

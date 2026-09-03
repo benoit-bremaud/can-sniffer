@@ -18,6 +18,7 @@ flowchart LR
     end
 
     subgraph UI[PySide6 adapter]
+        Bootstrap[Application bootstrap]
         Window[CaptureWindow]
         Settings[SettingsWidget]
     end
@@ -30,6 +31,7 @@ flowchart LR
     Settings --> Model
     Settings --> Contract
     Window --> Model
+    Bootstrap -->|"configures stable namespace"| QSettings
     QStore --> Contract
     QStore --> Model
     QStore --> QSettings
@@ -38,5 +40,7 @@ flowchart LR
 ## Notes
 
 - Dependencies point toward the pure preference model and repository contract.
+- The application bootstrap configures the `benoit-bremaud` / `can-sniffer` namespace before
+  the repository creates or accesses `QSettings`.
 - `QSettings` remains confined to the persistence adapter.
 - The capture and protocol modules do not depend on settings persistence.
