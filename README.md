@@ -6,8 +6,14 @@ The charger protocol documented in the supplied V1.13 specification uses CAN 2.0
 29-bit extended identifiers, 8-byte payloads, and a bitrate of 125 kbit/s.
 
 The current implementation supports read-only SocketCAN capture, Infypower frame decoding,
-capture filtering, temporal statistics, CSV export, and offline CSV replay. CAN transmission
-is intentionally out of scope and is not exposed by the application.
+capture filtering, temporal statistics, CSV export, offline CSV replay, and persistent display
+preferences. CAN transmission is intentionally out of scope and is not exposed by the
+application.
+
+Display preferences are available from the **Settings** tab. They control identifier format,
+numeric precision, raw payloads, decoded values, diagnostics, and temporal statistics. Changes
+are stored locally and restored on the next launch; they never affect captured data or CAN bus
+operation.
 
 ## Development
 
@@ -59,3 +65,11 @@ The current protocol decoder covers the documented Infypower system measurements
 module measurements, AC input voltages, module ratings, and available output capacity. The
 module-measurement mapping is documented in
 `docs/architecture/specs/module-measurements.md`.
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the project workflow and validation requirements.
+
+## License
+
+This project is licensed under the MIT License. See [`LICENSE`](LICENSE).

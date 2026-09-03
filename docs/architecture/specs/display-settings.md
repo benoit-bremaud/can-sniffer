@@ -1,7 +1,7 @@
 # Persistent display settings
 
 > **Feature**: issue #26 — [Add persistent display settings](https://github.com/benoit-bremaud/can-sniffer/issues/26)
-> **Status**: planned
+> **Status**: implemented
 
 ## Objective
 
