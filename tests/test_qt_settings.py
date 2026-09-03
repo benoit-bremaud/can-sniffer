@@ -42,6 +42,28 @@ def test_repository_defaults_only_malformed_fields(tmp_path: Path) -> None:
     assert preferences.show_decoded_values is True
 
 
+def test_repository_converts_native_string_values(tmp_path: Path) -> None:
+    settings = create_settings(tmp_path / "settings.ini")
+    settings.setValue("display/identifier_format", "decimal")
+    settings.setValue("display/numeric_precision", "2")
+    settings.setValue("display/show_raw_payload", "false")
+    settings.setValue("display/show_decoded_values", "true")
+    settings.setValue("display/show_diagnostics", "false")
+    settings.setValue("display/show_temporal_statistics", "true")
+    settings.sync()
+
+    preferences = QtSettingsRepository(settings).load()
+
+    assert preferences == DisplayPreferences(
+        identifier_format=IdentifierFormat.DECIMAL,
+        numeric_precision=2,
+        show_raw_payload=False,
+        show_decoded_values=True,
+        show_diagnostics=False,
+        show_temporal_statistics=True,
+    )
+
+
 def test_repository_returns_defaults_when_storage_cannot_be_read(tmp_path: Path) -> None:
     settings = create_settings(tmp_path)
 

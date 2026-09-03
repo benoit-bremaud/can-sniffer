@@ -23,17 +23,36 @@ class QtSettingsRepository:
         if self._settings.status() is not QSettings.Status.NoError:
             logger.warning("Cannot read display preferences; using defaults")
             return DisplayPreferences.defaults()
-        keys = (
-            "identifier_format",
-            "numeric_precision",
-            "show_raw_payload",
-            "show_decoded_values",
-            "show_diagnostics",
-            "show_temporal_statistics",
-        )
         return DisplayPreferences.from_values(
-            {key: self._settings.value(f"{self._PREFIX}{key}") for key in keys}
+            {
+                "identifier_format": self._read("identifier_format"),
+                "numeric_precision": self._stored_integer("numeric_precision"),
+                "show_raw_payload": self._stored_boolean("show_raw_payload"),
+                "show_decoded_values": self._stored_boolean("show_decoded_values"),
+                "show_diagnostics": self._stored_boolean("show_diagnostics"),
+                "show_temporal_statistics": self._stored_boolean(
+                    "show_temporal_statistics"
+                ),
+            }
         )
+
+    def _read(self, key: str) -> object:
+        return self._settings.value(f"{self._PREFIX}{key}")
+
+    def _stored_integer(self, key: str) -> object:
+        value = self._read(key)
+        if isinstance(value, str):
+            try:
+                return int(value)
+            except ValueError:
+                return value
+        return value
+
+    def _stored_boolean(self, key: str) -> object:
+        value = self._read(key)
+        if isinstance(value, str) and value.lower() in {"true", "false"}:
+            return value.lower() == "true"
+        return value
 
     def save(self, preferences: DisplayPreferences) -> None:
         """Persist all preference values without interrupting the application on failure."""
