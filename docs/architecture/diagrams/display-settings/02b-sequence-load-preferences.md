@@ -21,10 +21,16 @@ sequenceDiagram
 
     Bootstrap->>Store: load()
     Store->>Settings: Read raw display values
-    Settings-->>Store: Primitive values
-    Store->>Preferences: from_values(values)
-    Preferences->>Preferences: Validate each field independently
-    Preferences-->>Store: Valid preferences with per-field defaults
+    alt Read succeeds
+        Settings-->>Store: Primitive values
+        Store->>Preferences: from_values(values)
+        Preferences->>Preferences: Validate each field independently
+        Preferences-->>Store: Valid preferences with per-field defaults
+    else Settings backend cannot be read
+        Settings-->>Store: Storage access failure
+        Store->>Preferences: defaults()
+        Preferences-->>Store: Default preferences
+    end
     Store-->>Bootstrap: DisplayPreferences
     Bootstrap->>SettingsTab: Create with preferences and repository
     Bootstrap->>Window: Create with preferences and SettingsWidget
@@ -34,6 +40,7 @@ sequenceDiagram
 ## Notes
 
 - Missing, malformed, out-of-range, and obsolete values affect only their own field.
+- A global storage read failure returns domain defaults and does not prevent startup or capture.
 - `DisplayPreferences` has no dependency on Qt or the storage format.
 - `CaptureWindow` receives no persistence adapter and remains unaware of `QSettings`.
 - The application bootstrap loads preferences before constructing the views.

@@ -66,7 +66,7 @@ classDiagram
 - Enumeration member names follow Python conventions; their quoted values are the stable strings
   persisted by the Qt adapter.
 - `from_values()` validates each supplied primitive independently and substitutes only the
-  corresponding default when a value is missing, malformed, out of range, or obsolete.
+  corresponding default when a value is missing, malformed, out-of-range, or obsolete.
 - Validation belongs to `DisplayPreferences`; storage only reads and writes stable primitive values.
 - `SettingsWidget` edits preferences but does not own capture or decoding rules.
 - `CaptureWindow` receives `SettingsWidget` from the application bootstrap and has no persistence

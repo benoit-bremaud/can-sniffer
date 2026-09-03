@@ -30,7 +30,7 @@ flowchart LR
 
     Settings --> Model
     Settings --> Contract
-    Settings --> Window
+    Window --> Settings
     Window --> Model
     Bootstrap -->|"configures stable namespace"| QSettings
     Bootstrap --> QStore
@@ -48,5 +48,7 @@ flowchart LR
   the repository creates or accesses `QSettings`.
 - The bootstrap assembles the concrete adapter and Qt widgets; `CaptureWindow` receives no
   persistence dependency.
+- `CaptureWindow` subscribes to `SettingsWidget.preferences_changed`; the widget holds no
+  reference to its containing window.
 - `QSettings` remains confined to the persistence adapter.
 - The capture and protocol modules do not depend on settings persistence.
