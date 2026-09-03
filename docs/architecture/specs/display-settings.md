@@ -34,6 +34,8 @@ stable output. For example, precision `3` renders `12.3` as `12.300` and `0.0012
    charger-specific data are never stored by this feature.
 4. Every preference is validated independently when loaded. A missing, invalid, or obsolete
    value falls back to that field's documented default without invalidating other fields.
+   `DisplayPreferences.from_values()` owns this framework-independent reconstruction from raw
+   primitive values; the persistence adapter does not duplicate domain validation.
 5. A valid change is saved immediately and reapplied to retained frame rows and statistics.
    Live capture and replay state are preserved.
 6. Restoring defaults replaces all preferences, persists them, updates the Settings controls,
