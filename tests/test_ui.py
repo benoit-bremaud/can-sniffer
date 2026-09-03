@@ -1,10 +1,10 @@
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QCoreApplication
+from PySide6.QtCore import QCoreApplication, QSettings
 from PySide6.QtWidgets import QApplication
 
-from can_sniffer.analysis import CapturedFrame
+from can_sniffer.analysis import CapturedFrame, IdentifierStatistics, TemporalAnalyzer
 from can_sniffer.app import create_application, create_capture_window
 from can_sniffer.capture import CaptureConfiguration
 from can_sniffer.preferences import DisplayPreferences, IdentifierFormat
@@ -547,7 +547,11 @@ def test_window_displays_capture_error(qt_application: QApplication) -> None:
 
 def test_application_composition_builds_capture_window(
     qt_application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    monkeypatch.setattr("can_sniffer.app.QSettings", lambda: settings)
     application = create_application([])
     window = create_capture_window()
 
@@ -572,7 +576,9 @@ def test_window_applies_settings_without_changing_capture_state(
     window.start_capture()
     window._poll_capture()
     retained = list(window._records)
-    window._display_paused = True
+    window.toggle_display_pause()
+    hidden = CapturedFrame(1.0, result)
+    window._records.append(hidden)
 
     window.apply_preferences(
         DisplayPreferences(
@@ -585,13 +591,39 @@ def test_window_applies_settings_without_changing_capture_state(
         )
     )
 
+    assert window.frame_list.count() == 1
     assert window.frame_list.item(0).text() == "291 | Decoded Infypower frame"
     assert window.statistics_label.isHidden()
     assert window.statistics_list.isHidden()
     assert window.statistics_button.isHidden()
     assert window._capturing is True
     assert window._display_paused is True
-    assert window._records == retained
+    assert window._records == [*retained, hidden]
+
+    window.toggle_display_pause()
+
+    assert window.frame_list.count() == 2
+
+
+def test_unrelated_preferences_do_not_recalculate_statistics(
+    qt_application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del qt_application
+    window = create_test_window(FakeController([]))
+    calls = 0
+
+    def summarize(records: list[CapturedFrame]) -> list[IdentifierStatistics]:
+        nonlocal calls
+        del records
+        calls += 1
+        return []
+
+    monkeypatch.setattr(TemporalAnalyzer, "summarize", summarize)
+
+    window.apply_preferences(DisplayPreferences(show_raw_payload=False))
+
+    assert calls == 0
 
 
 def test_window_reformats_retained_measurements_and_statistics(

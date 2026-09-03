@@ -66,6 +66,7 @@ class CaptureWindow(QMainWindow):
         self.settings_widget = settings_widget
         self._capturing = False
         self._display_paused = False
+        self._display_pause_index: int | None = None
         self._capture_origin: float | None = None
         self._channel = ""
         self._records: list[CapturedFrame] = []
@@ -164,13 +165,21 @@ class CaptureWindow(QMainWindow):
 
     def apply_preferences(self, preferences: DisplayPreferences) -> None:
         """Apply display preferences immediately without changing retained data or state."""
+        statistics_changed = (
+            self._preferences.identifier_format is not preferences.identifier_format
+            or self._preferences.numeric_precision != preferences.numeric_precision
+            or (
+                not self._preferences.show_temporal_statistics
+                and preferences.show_temporal_statistics
+            )
+        )
         self._preferences = preferences
         visible = preferences.show_temporal_statistics
         self.statistics_label.setVisible(visible)
         self.statistics_list.setVisible(visible)
         self.statistics_button.setVisible(visible)
         self._render_display()
-        if visible:
+        if visible and statistics_changed:
             self.refresh_statistics()
 
     def start_capture(self) -> None:
@@ -190,6 +199,7 @@ class CaptureWindow(QMainWindow):
             return
         self._capturing = True
         self._display_paused = False
+        self._display_pause_index = None
         if self._capture_origin is None:
             self._capture_origin = time.monotonic()
         self._channel = channel
@@ -218,8 +228,11 @@ class CaptureWindow(QMainWindow):
         """Pause or resume display updates without stopping capture."""
         self._display_paused = not self._display_paused
         self.pause_button.setText("Resume display" if self._display_paused else "Pause display")
-        if not self._display_paused:
-            self._refresh_display()
+        if self._display_paused:
+            self._display_pause_index = len(self._records)
+            return
+        self._display_pause_index = None
+        self._refresh_display()
 
     def clear_history(self) -> None:
         """Clear visible history while retaining captured records for export."""
@@ -279,6 +292,7 @@ class CaptureWindow(QMainWindow):
         self._records.clear()
         self._display_start_index = 0
         self._display_paused = False
+        self._display_pause_index = None
         self.pause_button.setText("Pause display")
         self.frame_list.clear()
         self.statistics_list.clear()
@@ -416,9 +430,10 @@ class CaptureWindow(QMainWindow):
 
     def _render_display(self) -> None:
         self.frame_list.clear()
+        display_end = self._display_pause_index if self._display_paused else None
         matching = [
             captured
-            for captured in self._records[self._display_start_index :]
+            for captured in self._records[self._display_start_index : display_end]
             if self._frame_filter.matches(captured)
         ]
         for captured in matching[-self._MAX_DISPLAYED_FRAMES :]:
