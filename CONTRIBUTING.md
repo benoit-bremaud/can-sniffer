@@ -14,6 +14,24 @@
 Documentation-only changes do not require new UML when they do not alter behavior or architecture.
 CAN transmission requires a dedicated safety design and remains disabled by default.
 
+## Versioned public surface
+
+Semantic Versioning covers the installed `can-sniffer` command, documented application behavior,
+the exported CSV format accepted for replay, and documented protocol-decoding results. Internal
+Python modules are not a stable library API.
+
+## Release workflow
+
+1. Select the version according to Semantic Versioning and keep the version in `pyproject.toml`
+   without a `v` prefix.
+2. Prepare the version and matching `CHANGELOG.md` section in a reviewed pull request.
+3. Merge the preparation pull request into `main` and wait for all checks to pass.
+4. Create an annotated, signed `vMAJOR.MINOR.PATCH` tag from that exact `main` commit.
+5. Push only the release tag and publish a GitHub release using the matching changelog section.
+
+Published versions are immutable: never move, delete, or reuse a release tag. Tag protection is
+defined in [`.github/tag-protection.md`](.github/tag-protection.md).
+
 ## Validation
 
 Use the isolated test environment and run:
