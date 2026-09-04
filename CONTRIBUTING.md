@@ -3,12 +3,13 @@
 ## Workflow
 
 1. Start from an Issue with an explicit scope and acceptance criteria.
-2. Add or update proportional UML documentation before implementing behavior or architecture.
-3. Obtain design approval, then create a dedicated branch from `main`.
-4. Keep changes focused and follow Clean Architecture, SOLID, KISS, DRY, and YAGNI.
-5. Use Angular Conventional Commits: `type(scope): description`.
-6. Open a pull request linked to the Issue and address all review comments before merging.
-7. Merge only after explicit maintainer approval, then remove the merged branch.
+2. Create a dedicated branch from an up-to-date `main` before editing any project file.
+3. Add or update proportional UML documentation before implementing behavior or architecture.
+4. Obtain design approval before implementation.
+5. Keep changes focused and follow Clean Architecture, SOLID, KISS, DRY, and YAGNI.
+6. Use Angular Conventional Commits: `type(scope): description`.
+7. Open a pull request linked to the Issue and address all review comments before merging.
+8. Merge only after explicit maintainer approval, then remove the merged branch.
 
 Documentation-only changes do not require new UML when they do not alter behavior or architecture.
 CAN transmission requires a dedicated safety design and remains disabled by default.
