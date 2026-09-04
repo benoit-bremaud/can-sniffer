@@ -29,8 +29,17 @@ classDiagram
         +send(request) None
     }
 
+    class CanInterfaceReadinessPort {
+        <<protocol>>
+        +ensure_ready(channel) None
+    }
+
     class SocketCanTransmitter {
         +send(request) None
+    }
+
+    class IpLinkCanInterfaceInspector {
+        +ensure_ready(channel) None
     }
 
     class TransmissionWidget {
@@ -49,6 +58,8 @@ classDiagram
     }
 
     CanTransmissionPort <|.. SocketCanTransmitter
+    CanInterfaceReadinessPort <|.. IpLinkCanInterfaceInspector
+    SocketCanTransmitter --> CanInterfaceReadinessPort
     TransmissionBus <-- SocketCanTransmitter
     SocketCanTransmitter --> ManualTransmission
     TransmissionWidget --> ManualTransmission
@@ -62,6 +73,8 @@ classDiagram
 - `TransmissionWidget` sends the validated instance that it displayed for confirmation.
 - `CaptureWindow` hosts the widget but does not receive `CanTransmissionPort` itself.
 - `CanTransmissionPort` exists for the real fake-hardware test seam required by safety tests.
+- `CanInterfaceReadinessPort` lets the transmitter fail closed before opening a hardware socket;
+  its Linux adapter performs one read-only inspection and never configures the interface.
 - `TransmissionBus` is the smallest python-can-facing contract needed to test resource cleanup and
   exact send semantics without a physical interface.
 - No service class merely forwards from the widget to the port.

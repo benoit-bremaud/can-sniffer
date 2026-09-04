@@ -19,6 +19,7 @@ sequenceDiagram
     participant Request as ManualTransmission
     participant Dialog as Confirmation dialog
     participant Transmitter as CanTransmissionPort / SocketCanTransmitter
+    participant Readiness as CanInterfaceReadinessPort
     participant Bus as SocketCAN bus
 
     Operator->>Panel: Enable manual transmission
@@ -37,15 +38,23 @@ sequenceDiagram
         else Operator confirms
             Dialog-->>Panel: Accepted
             Panel->>Transmitter: send(same request)
-            Transmitter->>Bus: Open channel as Classical CAN without local loopback
-            Transmitter->>Bus: Send one extended eight-byte frame
-            Transmitter->>Bus: Close
-            alt Adapter fails
+            Transmitter->>Readiness: ensure_ready(channel)
+            alt Interface state is unsafe or unknown
+                Readiness-->>Transmitter: Readiness error
                 Transmitter-->>Panel: Transmission error
-                Panel-->>Operator: Show failure
-            else Adapter succeeds
-                Transmitter-->>Panel: Completed
-                Panel-->>Operator: Show one-frame success
+                Panel-->>Operator: Show failure; no socket opened
+            else vcan or physical ONE-SHOT verified
+                Readiness-->>Transmitter: Ready
+                Transmitter->>Bus: Open Classical CAN without local loopback
+                Transmitter->>Bus: Submit one extended eight-byte frame
+                Transmitter->>Bus: Close
+                alt Adapter fails after readiness
+                    Transmitter-->>Panel: Transmission error
+                    Panel-->>Operator: Show failure
+                else Adapter completes
+                    Transmitter-->>Panel: Completed
+                    Panel-->>Operator: Show one-attempt success
+                end
             end
         end
     end
@@ -56,3 +65,4 @@ sequenceDiagram
 - Disabled state prevents the `Send once` interaction from starting.
 - Validation and cancellation have no path to the transmitter.
 - No loop, retry, queue, or replay participant can initiate a send.
+- A finite send timeout is not treated as controller-level one-shot protection.

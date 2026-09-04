@@ -30,3 +30,8 @@ the confirmation is shown. The exact same request is passed to a small transmiss
 confirmation. A SocketCAN adapter opens a separate CAN 2.0 socket with local loopback disabled,
 sends once, reports any failure, and closes the socket. Linux interface configuration remains an
 explicit external operation because the application must not require elevated privileges.
+
+A single userspace send does not prevent a CAN controller from automatically retransmitting an
+unacknowledged frame. Immediately before each send, a read-only Linux adapter therefore accepts
+`vcan` for development or requires a physical interface to report `ONE-SHOT` without
+`LISTEN-ONLY`. Unknown or unsupported state fails closed before the transmit socket is opened.

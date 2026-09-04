@@ -1,19 +1,24 @@
 # CAN Sniffer
 
-Read-only graphical CAN bus monitor for Infypower charger modules on Linux.
+Graphical CAN bus monitor for Infypower charger modules on Linux.
 
 The charger protocol documented in the supplied V1.13 specification uses CAN 2.0B,
 29-bit extended identifiers, 8-byte payloads, and a bitrate of 125 kbit/s.
 
-The current implementation supports read-only SocketCAN capture, Infypower frame decoding,
-capture filtering, temporal statistics, CSV export, offline CSV replay, and persistent display
-preferences. CAN transmission is intentionally out of scope and is not exposed by the
-application.
+The application supports read-only SocketCAN capture, Infypower frame decoding, capture filtering,
+temporal statistics, CSV export, offline CSV replay, persistent display preferences, and guarded
+one-attempt manual transmission.
 
 Display preferences are available from the **Settings** tab. They control identifier format,
 numeric precision, raw payloads, decoded values, diagnostics, and temporal statistics. Changes
 are stored locally and restored on the next launch; they never affect captured data or CAN bus
 operation.
+
+Manual transmission is disabled at every startup. Each request must contain one 29-bit extended
+identifier and exactly eight bytes, then requires explicit confirmation. Physical interfaces must
+be configured externally with controller-level `ONE-SHOT` enabled; the application verifies this
+state immediately before sending and otherwise fails closed. See
+[`docs/hardware/canable-2.0.md`](docs/hardware/canable-2.0.md) before connecting hardware.
 
 ## Development
 

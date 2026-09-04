@@ -1,4 +1,4 @@
-"""Minimal PySide6 user interface for read-only CAN capture."""
+"""PySide6 main window for CAN capture, replay, settings, and transmission."""
 
 import logging
 import time
@@ -31,6 +31,7 @@ from can_sniffer.preferences import DisplayPreferences, IdentifierFormat
 from can_sniffer.protocol import DecodeResult
 from can_sniffer.replay import CsvCaptureLoader, ReplayController
 from can_sniffer.settings_ui import SettingsWidget
+from can_sniffer.transmission_ui import TransmissionWidget
 
 logger = logging.getLogger(__name__)
 
@@ -59,11 +60,13 @@ class CaptureWindow(QMainWindow):
         controller: CaptureController,
         preferences: DisplayPreferences,
         settings_widget: SettingsWidget,
+        transmission_widget: TransmissionWidget,
     ) -> None:
         super().__init__()
         self._controller = controller
         self._preferences = preferences
         self.settings_widget = settings_widget
+        self.transmission_widget = transmission_widget
         self._capturing = False
         self._display_paused = False
         self._display_pause_index: int | None = None
@@ -143,6 +146,7 @@ class CaptureWindow(QMainWindow):
         layout.addWidget(self.frame_list)
         self.tabs = QTabWidget()
         self.tabs.addTab(capture_widget, "Capture")
+        self.tabs.addTab(self.transmission_widget, "Transmission")
         self.tabs.addTab(self.settings_widget, "Settings")
         self.setCentralWidget(self.tabs)
         self.setWindowTitle("CAN Sniffer")
