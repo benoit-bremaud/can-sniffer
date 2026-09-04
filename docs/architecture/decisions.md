@@ -13,7 +13,20 @@ kernel filtering, and standard CAN error reporting.
 
 ## 2026-09-01 - Configuration boundary
 
-The operator selects the SocketCAN channel in the UI. The application fixes the protocol bitrate
-at 125 kbit/s and enforces listen-only capture. Display preferences are stored locally through the
-QSettings adapter, while stable Infypower protocol definitions remain versioned documentation and
-code.
+The operator selects the SocketCAN channel in the UI. The application requests listen-only capture
+at the protocol bitrate of 125 kbit/s, while the Linux interface state remains externally
+configured. Display preferences are stored locally through the QSettings adapter, while stable
+Infypower protocol definitions remain versioned documentation and code.
+
+## 2026-09-04 - Safe manual transmission boundary
+
+The first transmission capability is limited to one explicitly confirmed Infypower frame at a
+time. Every frame uses a 29-bit extended identifier and exactly eight data bytes, matching the
+V1.13 protocol. Transmission is disabled when the application starts, is never persisted, and
+cannot be initiated by capture, replay, settings restoration, or a timer.
+
+Validation produces one immutable request containing the channel, identifier, and payload before
+the confirmation is shown. The exact same request is passed to a small transmission port after
+confirmation. A SocketCAN adapter opens a separate CAN 2.0 socket with local loopback disabled,
+sends once, reports any failure, and closes the socket. Linux interface configuration remains an
+explicit external operation because the application must not require elevated privileges.
