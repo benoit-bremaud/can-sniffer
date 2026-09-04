@@ -10,6 +10,7 @@ Verify that no ruleset with the same name exists, then create the active tag rul
 
 ```bash
 gh api repos/benoit-bremaud/can-sniffer/rulesets \
+  --paginate \
   --jq '.[] | select(.name == "Protect release tags") | {id, name, target, enforcement}'
 
 gh api repos/benoit-bremaud/can-sniffer/rulesets -X POST --input - <<'JSON'
@@ -45,6 +46,7 @@ Find the ruleset identifier, then inspect its full configuration:
 
 ```bash
 gh api repos/benoit-bremaud/can-sniffer/rulesets \
+  --paginate \
   --jq '.[] | select(.name == "Protect release tags") | {id, name, target, enforcement}'
 
 gh api repos/benoit-bremaud/can-sniffer/rulesets/<RULESET_ID>
