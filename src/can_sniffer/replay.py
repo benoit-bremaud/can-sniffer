@@ -3,11 +3,12 @@
 import csv
 import math
 from collections.abc import Iterable
+from dataclasses import replace
 from io import StringIO
 from pathlib import Path
 
 from can_sniffer.analysis import CapturedFrame
-from can_sniffer.protocol import CanFrame, DecodeResult
+from can_sniffer.protocol import CanFrame, ProtocolDecoder
 
 
 class CsvCaptureLoader:
@@ -42,6 +43,7 @@ class CsvCaptureLoader:
 
         records: list[CapturedFrame] = []
         previous_timestamp = 0.0
+        decoder = ProtocolDecoder()
         for row_number, row in enumerate(reader, start=2):
             try:
                 timestamp = float(row["timestamp_seconds"] or "")
@@ -67,11 +69,13 @@ class CsvCaptureLoader:
                 for diagnostic in (row["diagnostics"] or "").split(";")
                 if diagnostic.strip()
             )
-            result = DecodeResult(
-                CanFrame(arbitration_id, data, is_extended_id, is_error_frame),
-                None,
-                description,
-                diagnostics=diagnostics,
+            decoded = decoder.decode(
+                CanFrame(arbitration_id, data, is_extended_id, is_error_frame)
+            )
+            result = replace(
+                decoded,
+                description=description,
+                diagnostics=tuple(dict.fromkeys((*decoded.diagnostics, *diagnostics))),
             )
             records.append(CapturedFrame(timestamp, result))
             previous_timestamp = timestamp
