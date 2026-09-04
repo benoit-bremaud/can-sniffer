@@ -27,5 +27,6 @@ flowchart LR
 ## Notes
 
 - The actor initiates every send.
-- One completed use case emits at most one frame.
+- One completed use case makes at most one physical transmission attempt; controller-level
+  retransmission must be disabled first.
 - Capture and offline replay are not transmission actors.

@@ -1,7 +1,7 @@
 # Safe manual CAN frame transmission
 
 > **Feature**: issue #34 — [add safe manual CAN frame transmission](https://github.com/benoit-bremaud/can-sniffer/issues/34)
-> **Status**: approved — implementation pending
+> **Status**: implemented — pending review
 > **Protocol source**: Infypower Charger module CAN Communication Protocol V1.13, sections 1.1,
 > 2.1, and 2.2
 
@@ -33,8 +33,10 @@ This matches the target protocol and avoids a generic CAN console that the proje
 
 ### D2 — One-shot transmission only
 
-One confirmation can produce at most one adapter call and one CAN frame. Periodic transmission,
-retries, queues, macros, command builders, and replay-to-bus are excluded.
+One confirmation can produce at most one adapter call and one physical transmission attempt.
+Periodic transmission, software retries, queues, macros, command builders, and replay-to-bus are
+excluded. A physical CAN interface must also have controller-level automatic retransmission
+disabled (`ONE-SHOT`); a finite userspace send timeout alone does not provide this guarantee.
 
 ### D3 — Two deliberate operator actions
 
@@ -72,16 +74,25 @@ cancelled operations do not reach hardware.
 
 ### D7 — Independent, short-lived SocketCAN socket
 
-Each confirmed operation opens a CAN 2.0 SocketCAN bus for the request channel, disables local
-loopback, sends exactly once with a finite timeout, and closes the bus even on failure. Disabling
-local loopback prevents the existing capture socket from presenting the locally sent frame as if
-it had been received from the charger. Actual charger replies remain visible to live capture.
+Immediately before opening a transmit socket, the adapter asks a read-only readiness port to
+verify the selected Linux interface. A virtual CAN interface is accepted for development. A
+physical CAN interface is accepted only when its reported controller modes include `ONE-SHOT` and
+exclude `LISTEN-ONLY`. Missing tools, inaccessible or malformed interface state, unsupported
+controller modes, and inspection failures all reject the operation before a CAN socket is opened.
+
+After readiness succeeds, the operation opens a CAN 2.0 SocketCAN bus for the request channel,
+disables local loopback, submits exactly one extended frame with a finite timeout, and closes the
+bus even on failure. Disabling local loopback prevents the existing capture socket from presenting
+the locally sent frame as if it had been received from the charger. Actual charger replies remain
+visible to live capture.
 
 ### D8 — No privileged interface management
 
-The application does not run `ip`, `slcand`, firmware tools, or privileged commands. The operator
-configures the Linux interface externally. A channel left in kernel listen-only mode rejects
-transmission and the application reports that adapter error.
+The application never configures an interface and does not run `slcand`, firmware tools, or any
+privileged command. The operator configures the Linux interface externally. The infrastructure
+adapter may execute `ip -details -json link show dev <channel>` without a shell for a read-only,
+immediate readiness check. It treats all ambiguous results as unsafe and reports an actionable
+error without transmitting.
 
 ### D9 — Capture and replay isolation
 
@@ -148,6 +159,9 @@ SocketCAN channel. The executable arrival checklist is maintained in
 - Preserve a trimmed non-empty channel in the immutable request.
 - Verify the SocketCAN adapter builds one extended Classical CAN message, sends once, disables
   local loopback, uses a finite timeout, and always closes its bus.
+- Accept `vcan` and physical interfaces reporting `ONE-SHOT` without `LISTEN-ONLY`.
+- Reject missing, inaccessible, malformed, listen-only, and non-one-shot physical interfaces
+  before opening the transmit bus.
 - Verify bus-open and send failures propagate without retry or false success.
 
 ### UI component tests
@@ -177,6 +191,8 @@ coverage at or above 90%.
 - Every transmitted frame is Classical CAN with a 29-bit extended identifier and eight bytes.
 - The confirmed request cannot change between confirmation and adapter invocation.
 - Adapter errors are actionable and cannot be mistaken for success.
+- Physical transmission fails closed unless controller-level `ONE-SHOT` is verified immediately
+  before the transmit socket is opened.
 - Capture can observe charger replies without displaying a local transmit echo as a received frame.
 - Replay remains structurally unable to transmit.
 - The core remains independent from PySide6, python-can, SocketCAN, and filesystem I/O.

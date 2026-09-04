@@ -10,6 +10,11 @@ from can_sniffer.protocol import ProtocolDecoder
 from can_sniffer.qt_settings import QtSettingsRepository
 from can_sniffer.session import CaptureSession
 from can_sniffer.settings_ui import SettingsWidget
+from can_sniffer.socketcan_transmission import (
+    IpLinkCanInterfaceInspector,
+    SocketCanTransmitter,
+)
+from can_sniffer.transmission_ui import TransmissionWidget
 from can_sniffer.ui import CaptureWindow
 
 
@@ -29,7 +34,9 @@ def create_capture_window() -> CaptureWindow:
     repository = QtSettingsRepository(QSettings())
     preferences = repository.load()
     settings_widget = SettingsWidget(preferences, repository)
-    return CaptureWindow(session, preferences, settings_widget)
+    transmitter = SocketCanTransmitter(IpLinkCanInterfaceInspector())
+    transmission_widget = TransmissionWidget(transmitter)
+    return CaptureWindow(session, preferences, settings_widget, transmission_widget)
 
 
 def main() -> int:

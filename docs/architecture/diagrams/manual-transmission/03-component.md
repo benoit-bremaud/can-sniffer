@@ -17,6 +17,7 @@ flowchart LR
     subgraph Core[Framework-independent core]
         Request[ManualTransmission]
         Port[CanTransmissionPort]
+        ReadinessPort[CanInterfaceReadinessPort]
     end
 
     subgraph UI[PySide6 adapter]
@@ -27,6 +28,7 @@ flowchart LR
 
     subgraph Infrastructure[python-can boundary]
         Adapter[SocketCanTransmitter]
+        Inspector[IpLinkCanInterfaceInspector]
         PythonCan[python-can]
     end
 
@@ -39,18 +41,23 @@ flowchart LR
     Panel --> Port
     Panel --> Dialog
     Adapter --> Port
+    Adapter --> ReadinessPort
     Adapter --> Request
+    Inspector --> ReadinessPort
+    Adapter --> Inspector
     Adapter --> PythonCan
     PythonCan --> SocketCAN
     Window -->|"hosts tab only"| Panel
     Bootstrap --> Window
     Bootstrap --> Panel
     Bootstrap --> Adapter
+    Bootstrap --> Inspector
 ```
 
 ## Notes
 
 - Core dependencies do not point to PySide6, python-can, Linux commands, or the USB adapter.
+- The read-only readiness port is a required safety and test seam, not a general interface manager.
 - The composition root is the only component that selects `SocketCanTransmitter` for the port.
 - `CaptureWindow` hosts the already-wired tab, but its capture and replay workflows cannot invoke
   the transmission port.

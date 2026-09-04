@@ -90,23 +90,23 @@ For candleLight / `gs_usb`:
 
 ```bash
 sudo ip link set can0 down
-sudo ip link set can0 type can bitrate 125000 listen-only off
+sudo ip link set can0 type can bitrate 125000 listen-only off one-shot on
 sudo ip link set can0 up
 ip -details -statistics link show can0
 ```
 
-For SLCAN, identify the existing daemon with `pgrep -a slcand`, stop only its confirmed PID using
-the system process manager, and then reattach the serial device in normal mode using `-o`:
+The final output must contain `ONE-SHOT` and must not contain `LISTEN-ONLY`. The one-shot mode
+disables controller-level automatic retransmission; calling a userspace send function once does
+not disable CAN controller retries by itself.
 
-```bash
-sudo ip link set can0 down
-sudo slcand -c -f -o -s4 /dev/ttyACM0 can0
-sudo ip link set can0 up
-ip -details -statistics link show can0
-```
+For SLCAN, transmission remains disabled unless the exact firmware and Linux driver combination
+exposes a verifiable `ONE-SHOT` mode through SocketCAN. If `one-shot on` is rejected or the mode is
+absent from the detailed interface state, use verified candleLight/`gs_usb` firmware instead.
 
-The application never executes these privileged commands. Its Transmission tab remains disabled
-at startup and still requires confirmation for each eight-byte extended frame.
+The application never executes these privileged configuration commands. It performs only a
+read-only `ip -details -json` readiness check immediately before sending and fails closed if
+`ONE-SHOT` cannot be verified. Its Transmission tab remains disabled at startup and still
+requires confirmation for each eight-byte extended frame.
 
 ## 5. Recovery and evidence
 

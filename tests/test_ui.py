@@ -16,6 +16,8 @@ from can_sniffer.protocol import (
     SystemMeasurements,
 )
 from can_sniffer.settings_ui import SettingsWidget
+from can_sniffer.transmission import ManualTransmission
+from can_sniffer.transmission_ui import TransmissionWidget
 from can_sniffer.ui import CaptureController, CaptureWindow
 
 
@@ -47,13 +49,28 @@ class MemoryPreferencesRepository:
         self.preferences = preferences
 
 
+class FakeTransmitter:
+    def __init__(self) -> None:
+        self.requests: list[ManualTransmission] = []
+
+    def send(self, request: ManualTransmission) -> None:
+        self.requests.append(request)
+
+
 def create_test_window(
     controller: CaptureController,
     preferences: DisplayPreferences | None = None,
+    transmitter: FakeTransmitter | None = None,
 ) -> CaptureWindow:
     selected = preferences or DisplayPreferences.defaults()
     repository = MemoryPreferencesRepository(selected)
-    return CaptureWindow(controller, selected, SettingsWidget(selected, repository))
+    transmission = TransmissionWidget(transmitter or FakeTransmitter())
+    return CaptureWindow(
+        controller,
+        selected,
+        SettingsWidget(selected, repository),
+        transmission,
+    )
 
 
 @pytest.fixture
@@ -644,6 +661,22 @@ def test_window_reformats_retained_measurements_and_statistics(
 
     assert "Vout=12.35 V, Iout=0.13 A" in window.frame_list.item(0).text()
     assert window.statistics_list.item(0).text().startswith("0x123: count=1, first=")
-    assert window.tabs.count() == 2
-    assert window.tabs.tabText(1) == "Settings"
+    assert window.tabs.count() == 3
+    assert window.tabs.tabText(1) == "Transmission"
+    assert window.tabs.tabText(2) == "Settings"
     assert not hasattr(window.settings_widget, "transmission")
+
+
+def test_capture_and_replay_controls_cannot_transmit(qt_application: QApplication) -> None:
+    del qt_application
+    transmitter = FakeTransmitter()
+    window = create_test_window(FakeController([]), transmitter=transmitter)
+
+    window.start_capture()
+    window.stop_capture()
+    window.play_replay()
+    window.pause_replay()
+    window.stop_replay()
+    window.reset_replay()
+
+    assert transmitter.requests == []

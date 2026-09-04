@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "can-sniffer"
 version = "0.1.0"
-description = "Read-only graphical CAN bus monitor for Infypower charger modules on Linux."
+description = "Graphical CAN bus monitor for Infypower charger modules on Linux."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
