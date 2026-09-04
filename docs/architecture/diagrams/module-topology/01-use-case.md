@@ -5,9 +5,9 @@
 
 ## Context
 
-This diagram scopes the operator goal of inspecting topology information already present in a
-received or replayed Infypower frame. It excludes active discovery, query transmission, and UI
-navigation.
+This diagram scopes the operator goal of inspecting topology information decoded from a live
+Infypower frame. It excludes offline replay decoding, active discovery, query transmission, and
+UI navigation.
 
 ## Diagram
 
@@ -25,7 +25,7 @@ flowchart LR
 ## Notes
 
 - The observable outcome is a module count or an individual module group number.
-- Live capture and offline replay are two sources for the same operator goal, not separate use
-  cases.
+- Offline replay decoding is outside this feature and tracked by Issue
+  [#40](https://github.com/benoit-bremaud/can-sniffer/issues/40).
 - No component, class, state, or data-flow diagram is warranted: the feature adds no boundary,
   lifecycle, sensitive data flow, or complex type relationship.

@@ -184,6 +184,10 @@ class CsvExporter:
                 f"{ratings.maximum_output_current_amperes:g} A, "
                 f"{ratings.rated_output_power_watts:g} W"
             )
+        if result.module_count is not None:
+            values.append(f"Modules={result.module_count}")
+        if result.module_group_number is not None:
+            values.append(f"Group={result.module_group_number}")
         if result.ambient_temperature_celsius is not None:
             values.append(f"Ambient={result.ambient_temperature_celsius} °C")
         if result.module_state is not None:

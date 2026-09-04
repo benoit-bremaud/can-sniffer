@@ -488,6 +488,10 @@ class CaptureWindow(QMainWindow):
                 f"{number(module_ratings.maximum_output_current_amperes)} A, "
                 f"{number(module_ratings.rated_output_power_watts)} W"
             )
+        if self._preferences.show_decoded_values and result.module_count is not None:
+            decoded_values.append(f"Modules={result.module_count}")
+        if self._preferences.show_decoded_values and result.module_group_number is not None:
+            decoded_values.append(f"Group={result.module_group_number}")
         if self._preferences.show_decoded_values and result.ambient_temperature_celsius is not None:
             decoded_values.append(f"Ambient={result.ambient_temperature_celsius} °C")
         if self._preferences.show_decoded_values and result.module_state is not None:

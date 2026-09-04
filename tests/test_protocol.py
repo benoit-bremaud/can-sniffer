@@ -1,3 +1,5 @@
+import pytest
+
 from can_sniffer.protocol import CanFrame, ProtocolDecoder
 
 
@@ -56,6 +58,67 @@ def test_decodes_module_state_and_signed_ambient_temperature() -> None:
     )
 
 
+def test_decodes_documented_system_module_count() -> None:
+    frame = CanFrame(0x0282F03F, bytes.fromhex("00 00 07 00 00 00 00 00"))
+
+    result = ProtocolDecoder().decode(frame)
+
+    assert result.module_count == 7
+    assert result.module_group_number is None
+
+
+def test_decodes_documented_group_module_count() -> None:
+    frame = CanFrame(0x02C2F001, bytes.fromhex("00 00 03 00 00 00 00 00"))
+
+    result = ProtocolDecoder().decode(frame)
+
+    assert result.identifier is not None
+    assert result.identifier.device_number == 0x0B
+    assert result.identifier.source_address == 1
+    assert result.module_count == 3
+
+
+def test_decodes_documented_module_group_with_existing_information() -> None:
+    frame = CanFrame(0x0284F001, bytes.fromhex("00 00 02 00 1B 00 40 00"))
+
+    result = ProtocolDecoder().decode(frame)
+
+    assert result.module_group_number == 2
+    assert result.module_count is None
+    assert result.ambient_temperature_celsius == 27
+    assert result.module_state is not None
+
+
+@pytest.mark.parametrize(
+    ("arbitration_id", "field"),
+    [(0x0282F03F, "module_count"), (0x0284F001, "module_group_number")],
+)
+@pytest.mark.parametrize("value", [0, 255])
+def test_decodes_topology_byte_as_unsigned(
+    arbitration_id: int,
+    field: str,
+    value: int,
+) -> None:
+    frame = CanFrame(arbitration_id, bytes((0, 0, value, 0, 0, 0, 0, 0)))
+
+    result = ProtocolDecoder().decode(frame)
+
+    assert getattr(result, field) == value
+
+
+@pytest.mark.parametrize("arbitration_id", [0x0282F03F, 0x0284F001])
+@pytest.mark.parametrize("payload", [bytes(7), bytes(9)])
+def test_invalid_payload_length_does_not_expose_topology(
+    arbitration_id: int,
+    payload: bytes,
+) -> None:
+    result = ProtocolDecoder().decode(CanFrame(arbitration_id, payload))
+
+    assert result.module_count is None
+    assert result.module_group_number is None
+    assert result.diagnostics == ("Expected an 8-byte payload",)
+
+
 def test_decodes_documented_system_voltage_and_current() -> None:
     frame = CanFrame(0x02813FF0, bytes.fromhex("43 FA 00 00 42 48 00 00"))
 
@@ -64,6 +127,8 @@ def test_decodes_documented_system_voltage_and_current() -> None:
     assert result.system_measurements is not None
     assert result.system_measurements.output_voltage_volts == 500.0
     assert result.system_measurements.total_output_current_amperes == 50.0
+    assert result.module_count is None
+    assert result.module_group_number is None
 
 
 def test_decodes_documented_module_voltage_and_current() -> None:

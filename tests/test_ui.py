@@ -454,6 +454,7 @@ def test_window_displays_module_diagnostics_and_ratings(
         module_state=ModuleState(module_fault=True, output_short=True),
         ambient_temperature_celsius=-2,
         module_ratings=ModuleRatings(750, 100, 25.6, 15000),
+        module_group_number=2,
     )
     window = create_test_window(FakeController([result]))
 
@@ -462,7 +463,7 @@ def test_window_displays_module_diagnostics_and_ratings(
 
     item_text = window.frame_list.item(0).text()
     assert "Ratings=100.000-750.000 V, 25.600 A, 15000.000 W" in item_text
-    assert "Ambient=-2 °C" in item_text
+    assert "Group=2; Ambient=-2 °C" in item_text
     assert "Faults=module_fault, output_short" in item_text
 
 
@@ -587,11 +588,13 @@ def test_window_applies_settings_without_changing_capture_state(
         None,
         "Decoded Infypower frame",
         system_measurements=SystemMeasurements(12.345, 0.126),
+        module_count=7,
         diagnostics=("diagnostic",),
     )
     window = create_test_window(FakeController([result]))
     window.start_capture()
     window._poll_capture()
+    assert "Modules=7" in window.frame_list.item(0).text()
     retained = list(window._records)
     window.toggle_display_pause()
     hidden = CapturedFrame(1.0, result)

@@ -61,6 +61,30 @@ def test_csv_exporter_includes_external_voltage() -> None:
     assert "External V=400 V, Available=25 A" in content
 
 
+def test_csv_exporter_includes_module_topology() -> None:
+    records = [
+        CapturedFrame(
+            0.0,
+            DecodeResult(CanFrame(0x0282F03F, bytes(8)), None, "Decoded", module_count=7),
+        ),
+        CapturedFrame(
+            1.0,
+            DecodeResult(
+                CanFrame(0x0284F001, bytes(8)),
+                None,
+                "Decoded",
+                module_group_number=2,
+                ambient_temperature_celsius=27,
+            ),
+        ),
+    ]
+
+    rows = list(csv.DictReader(StringIO(CsvExporter.to_csv(records))))
+
+    assert rows[0]["decoded_values"] == "Modules=7"
+    assert rows[1]["decoded_values"] == "Group=2; Ambient=27 °C"
+
+
 def test_temporal_analyzer_groups_and_calculates_cadence() -> None:
     records = [
         CapturedFrame(0.0, captured(0x456).result),
