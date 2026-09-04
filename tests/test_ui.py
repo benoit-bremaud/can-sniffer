@@ -158,7 +158,7 @@ def test_window_loads_and_replays_csv_capture(
     source.write_text(
         "timestamp_seconds,arbitration_id,is_extended_id,is_error_frame,data,description,"
         "decoded_values,diagnostics\n"
-        "0.000000,0x123,true,false,01 02,First,,\n",
+        "0.000000,0x0284F001,true,false,00 00 02 00 1B 00 40 00,Stored,Group=99,\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(
@@ -174,6 +174,8 @@ def test_window_loads_and_replays_csv_capture(
     window._advance_replay()
 
     assert window.frame_list.count() == 1
+    assert "Group=2" in window.frame_list.item(0).text()
+    assert "Ambient=27 °C" in window.frame_list.item(0).text()
     window.pause_replay()
     window.reset_replay()
     assert window.frame_list.count() == 0
