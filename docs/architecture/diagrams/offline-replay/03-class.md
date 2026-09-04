@@ -45,7 +45,8 @@ classDiagram
 
 ## Notes
 
-- The loader validates data, calls the pure decoder once per row, and does not access SocketCAN.
+- The loader validates data, calls the pure decoder once per row, combines current and unique
+  stored diagnostics, and does not access SocketCAN.
 - No decoder interface is introduced because there is one deterministic implementation and no
   infrastructure boundary to substitute.
 - Replay timing is deterministic and testable without Qt.

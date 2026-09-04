@@ -23,8 +23,8 @@ sequenceDiagram
     loop Each CSV row
         Loader->>Loader: validate raw fields
         Loader->>Decoder: decode(CanFrame)
-        Decoder-->>Loader: identifier and semantic values
-        Loader->>Loader: preserve stored description and diagnostics
+        Decoder-->>Loader: identifier, semantic values, and current diagnostics
+        Loader->>Loader: preserve description and append unique stored diagnostics
     end
     Loader-->>Window: ordered captured records
     Window->>Replay: load(records)
@@ -48,5 +48,6 @@ sequenceDiagram
 
 - The loader never parses the human-readable `decoded_values` column.
 - Protocol decoding runs once per row before playback starts.
+- Current decoder diagnostics precede unique stored diagnostics, so safety warnings are not lost.
 - The replay controller has no CAN port dependency.
 - Pause stops local playback timing only.
