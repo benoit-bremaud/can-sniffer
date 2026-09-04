@@ -13,7 +13,7 @@ ineligible frames. It specifies no new layer or infrastructure dependency.
 ```mermaid
 sequenceDiagram
     actor Operator
-    participant Source as Capture or replay source
+    participant Source as Live capture source
     participant Decoder as ProtocolDecoder
     participant Result as DecodeResult
     participant Presenter as Existing display or CSV presenter
@@ -40,6 +40,8 @@ sequenceDiagram
 
 - `ProtocolDecoder` remains framework- and I/O-independent.
 - The existing source and presenter boundaries remain unchanged and depend on the domain result.
+- Offline replay decoding is outside this feature and tracked by Issue
+  [#40](https://github.com/benoit-bremaud/can-sniffer/issues/40).
 - Zero is represented as a decoded integer, while absence is represented by `None`.
 - No Strategy, Factory, Repository, or additional service is justified for two fixed command
   branches.
