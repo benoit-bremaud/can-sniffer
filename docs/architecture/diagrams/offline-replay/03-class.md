@@ -1,11 +1,11 @@
 # Class diagram — offline replay
 
-> **Feature**: issue #19 — [replay exported CAN captures offline](../../specs/offline-replay.md)
+> **Feature**: issues #19 and #40 — [replay exported CAN captures offline with semantic decoding](../../specs/offline-replay.md)
 
 ## Context
 
-This class view defines the pure loader and replay contracts. Qt file dialogs and timers remain
-at the application boundary.
+This class view defines the pure loader, decoder, and replay collaborations. Qt file dialogs and
+timers remain at the application boundary.
 
 ## Diagram
 
@@ -18,6 +18,9 @@ classDiagram
     class CsvCaptureLoader {
         +load(Path) tuple~CapturedFrame~
         +from_csv(string) tuple~CapturedFrame~
+    }
+    class ProtocolDecoder {
+        +decode(CanFrame) DecodeResult
     }
     class ReplayController {
         +load(tuple~CapturedFrame~)
@@ -34,6 +37,7 @@ classDiagram
         +reset_replay()
     }
     CsvCaptureLoader --> CapturedFrame
+    CsvCaptureLoader --> ProtocolDecoder : decodes each validated frame
     ReplayController --> CapturedFrame
     CaptureWindow --> CsvCaptureLoader
     CaptureWindow --> ReplayController
@@ -41,5 +45,7 @@ classDiagram
 
 ## Notes
 
-- The loader validates data and does not access SocketCAN.
+- The loader validates data, calls the pure decoder once per row, and does not access SocketCAN.
+- No decoder interface is introduced because there is one deterministic implementation and no
+  infrastructure boundary to substitute.
 - Replay timing is deterministic and testable without Qt.
