@@ -17,8 +17,8 @@ CAN transmission requires a dedicated safety design and remains disabled by defa
 ## Versioned public surface
 
 Semantic Versioning covers the installed `can-sniffer` command, documented application behavior,
-environment variables listed in `.env.example`, the exported CSV format accepted for replay, and
-documented protocol-decoding results. Internal Python modules are not a stable library API.
+the exported CSV format accepted for replay, and documented protocol-decoding results. Internal
+Python modules are not a stable library API.
 
 ## Release workflow
 

@@ -17,7 +17,7 @@ operation.
 
 ## Development
 
-Copy `.env.example` to `.env` and adjust local settings. Never commit `.env` or real captures.
+Never commit credentials, local configuration, or real captures.
 
 Install the project and development dependencies in the work environment with:
 

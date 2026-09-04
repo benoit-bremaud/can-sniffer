@@ -13,5 +13,7 @@ kernel filtering, and standard CAN error reporting.
 
 ## 2026-09-01 - Configuration boundary
 
-Runtime settings come from `.env`, while stable Infypower protocol definitions remain versioned
-source documentation/code. `.env` is never committed.
+The operator selects the SocketCAN channel in the UI. The application fixes the protocol bitrate
+at 125 kbit/s and enforces listen-only capture. Display preferences are stored locally through the
+QSettings adapter, while stable Infypower protocol definitions remain versioned documentation and
+code.
