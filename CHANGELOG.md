@@ -5,6 +5,24 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-09-04
+
+### Added
+
+- Guarded one-attempt transmission of manually entered 29-bit extended CAN frames.
+- Infypower module topology decoding for module count and group number.
+
+### Changed
+
+- Offline CSV replay now restores all supported semantic protocol values from raw CAN frames while
+  preserving stored descriptions and current-first diagnostics. The presentation-only
+  `decoded_values` column remains ignored.
+
+### Security
+
+- Manual transmission is disabled at startup, requires explicit confirmation for every frame, and
+  fails closed unless controller-level `ONE-SHOT` mode is verified on physical interfaces.
+
 ## [0.1.0] - 2026-09-04
 
 ### Added
@@ -28,4 +46,5 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - GitHub Actions checks code quality, secrets, static analysis, dependency changes, and repository
   security posture.
 
+[0.1.1]: https://github.com/benoit-bremaud/can-sniffer/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/benoit-bremaud/can-sniffer/releases/tag/v0.1.0
