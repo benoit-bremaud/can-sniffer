@@ -1,6 +1,6 @@
 # Module topology decoding
 
-> **Status**: proposed for Issue [#37](https://github.com/benoit-bremaud/can-sniffer/issues/37)
+> **Status**: implemented for Issue [#37](https://github.com/benoit-bremaud/can-sniffer/issues/37)
 >
 > **Protocol reference**: *Charger module CAN Communication Protocol V1.13*, commands
 > `0x02` and `0x04`
@@ -82,7 +82,7 @@ or mocks of domain code.
 
 | Category | Required evidence |
 | --- | --- |
-| Happy path | Documented system count 7, documented group count 3, and command `0x04` group 2 with ambient temperature 27 °C and walk-in state preserved |
+| Happy path | Documented system count 7, documented group count 3, and command `0x04` group 2 with ambient temperature 27 °C and existing state decoding preserved |
 | Sad path | Short and oversized payloads expose neither topology field and retain diagnostics; unrelated commands expose neither field |
 | Edge cases | Counts and group numbers 0 and 255 remain unsigned and distinguishable from `None`; decoded-value hiding suppresses labels |
 | Regression | Existing protocol, live display, replay, CSV export, state, and temperature tests remain green |

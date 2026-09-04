@@ -146,6 +146,8 @@ class DecodeResult:
     module_ratings: ModuleRatings | None = None
     module_availability: ModuleAvailability | None = None
     diagnostics: tuple[str, ...] = ()
+    module_count: int | None = None
+    module_group_number: int | None = None
 
 
 class ProtocolDecoder:
@@ -184,7 +186,12 @@ class ProtocolDecoder:
         ac_input_measurements: ACInputMeasurements | None = None
         module_ratings: ModuleRatings | None = None
         module_availability: ModuleAvailability | None = None
+        module_count: int | None = None
+        module_group_number: int | None = None
+        if identifier is not None and identifier.command_number == 0x02 and len(frame.data) == 8:
+            module_count = frame.data[2]
         if identifier is not None and identifier.command_number == 0x04 and len(frame.data) == 8:
+            module_group_number = frame.data[2]
             ambient_temperature = int.from_bytes(frame.data[4:5], byteorder="big", signed=True)
             module_state = self._decode_module_state(frame.data[5:8])
         if identifier is not None and identifier.command_number == 0x01 and len(frame.data) == 8:
@@ -218,17 +225,19 @@ class ProtocolDecoder:
 
         description = "Decoded Infypower frame" if identifier is not None else "Undecoded frame"
         return DecodeResult(
-            frame,
-            identifier,
-            description,
-            module_state,
-            ambient_temperature,
-            system_measurements,
-            module_measurements,
-            ac_input_measurements,
-            module_ratings,
-            module_availability,
-            tuple(diagnostics),
+            frame=frame,
+            identifier=identifier,
+            description=description,
+            module_state=module_state,
+            ambient_temperature_celsius=ambient_temperature,
+            system_measurements=system_measurements,
+            module_measurements=module_measurements,
+            ac_input_measurements=ac_input_measurements,
+            module_ratings=module_ratings,
+            module_availability=module_availability,
+            module_count=module_count,
+            module_group_number=module_group_number,
+            diagnostics=tuple(diagnostics),
         )
 
     def _parse_identifier(self, raw: int) -> InfypowerIdentifier:
