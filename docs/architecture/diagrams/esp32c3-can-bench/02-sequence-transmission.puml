@@ -1,0 +1,45 @@
+@startuml
+title sd — Start and observe one bench transmission
+actor Operator
+participant "USB adapter" as USB
+participant BenchController as Control
+participant "TWAI adapter (CanPort)" as CAN
+Operator -> USB: start + LF
+USB -> Control: start command
+Control -> CAN: initialize and start
+alt Initialization fails
+  CAN --> Control: error
+  Control -> Control: enter Fault
+else Initialization succeeds
+  CAN --> Control: ready
+  Control -> Control: enter Running, schedule +1000 ms
+  loop While Running, handle commands/faults before schedule
+    USB -> Control: command / connection / time
+    alt stop or USB disconnected
+      Control -> CAN: stop and clear pending
+      CAN --> Control: cleanup result
+      Control -> Control: Stopped or Fault
+    else due and no pending attempt
+      Control -> CAN: submit fixed frame, single-shot
+      alt submission fails
+        CAN --> Control: error
+        Control -> CAN: stop and cleanup
+        Control -> Control: Fault
+      else accepted
+        CAN --> Control: queued (not success)
+        Control -> CAN: poll completion, bounded to 250 ms
+        alt failure / bus-off / timeout
+          CAN --> Control: failure or no completion
+          Control -> CAN: stop and cleanup
+          Control -> Control: Fault, no automatic recovery
+        else TX_SUCCESS without a fault
+          CAN --> Control: confirmed transmission
+          Control -> Control: increment succeeded, clear pending
+        end
+      end
+    end
+  end
+end
+Control --> USB: state and distinct outcome
+USB --> Operator: status / fault log
+@enduml
