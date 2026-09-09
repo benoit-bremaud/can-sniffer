@@ -1,0 +1,19 @@
+@startuml
+title uc — ESP32-C3 CAN bench
+left to right direction
+actor Operator
+rectangle "ESP32-C3 CAN bench firmware" {
+  usecase "UC1 Start known-frame emission" as Start
+  usecase "UC2 Stop emission" as Stop
+  usecase "UC3 Inspect status and faults" as Status
+  usecase "UC4 Read usage instructions" as Help
+}
+Operator --> Start
+Operator --> Stop
+Operator --> Status
+Operator --> Help
+note bottom of Start
+Precondition: physically disconnected
+from every charger.
+end note
+@enduml

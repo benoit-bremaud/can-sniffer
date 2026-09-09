@@ -1,0 +1,29 @@
+@startuml
+title stm — BenchController lifecycle
+[*] --> Stopped
+Stopped --> Running : start / initialization succeeds
+Stopped --> Fault : start / initialization fails
+state Running {
+  [*] --> Waiting
+  Waiting --> Pending : due / single-shot accepted
+  Pending --> Waiting : TX_SUCCESS without fault
+}
+Running --> Fault : submission failure, TX_FAILED, timeout or bus-off
+Running --> Stopped : stop or USB loss / cleanup succeeds
+Running --> Fault : stop or USB loss / cleanup fails
+Fault --> Stopped : stop / cleanup succeeds and no bus-off latch
+Stopped --> Stopped : stop, status, help or invalid command
+note right of Running
+Repeated start does not reset cadence.
+status/help do not transmit.
+Invalid commands are rejected.
+Faults take priority over success.
+end note
+note right of Fault
+No automatic retry.
+Bus-off requires device reset.
+Every reset returns to Stopped.
+start is rejected in Fault.
+Cleanup failure remains Fault.
+end note
+@enduml
