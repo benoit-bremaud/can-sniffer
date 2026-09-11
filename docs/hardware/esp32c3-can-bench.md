@@ -194,3 +194,32 @@ acceptance remains open until these observations have actually been made.
 - [ESP32-C3 TWAI](https://docs.espressif.com/projects/esp-idf/en/v4.4.7/esp32c3/api-reference/peripherals/twai.html)
 - [SN65HVD230](https://www.ti.com/product/SN65HVD230)
 - [CANable identification and safety](canable-2.0.md)
+
+## Bench outage, 2026-09-11
+
+After both USB cables were replaced and the CAN wiring reseated, the bench stopped
+communicating in either direction. The evidence, in the order it was gathered:
+
+- Transceiver supply 3.3 V present; CANH and CANL biased to 2.3 V at its terminal.
+- CANH to CANL measures 68 ohms with everything unpowered, as it did when the bench worked,
+  so both terminations are in circuit and the pair is continuous end to end.
+- Continuity confirmed CANH to CAN-H and CANL to CAN-L, with no crossing.
+- The ESP32 reports `tx_error_counter=8`, `bus_error_count=1`, `rx_error_counter=0` on every
+  attempt: an acknowledgement error with nothing else on the bus.
+- The reverse direction is equally silent — `cansend` frames leave the kernel and the ESP32
+  receiver records `received=0` with **all error counters at zero**, meaning no signal at all
+  reaches its RX pin, not even malformed signal.
+- Three independent host-side methods behave identically: raw pyserial at 1 Mbaud with pauses
+  (the exact sequence that produced ten of ten frames earlier the same day), python-can's
+  slcan backend at 1 Mbaud, and the same at its default 115200. That rules out the host
+  software, including the capture work of #48.
+
+Leading hypothesis, untested: the CANable's CAN transceiver is dead while its USB side still
+enumerates and answers `V`. A termination resistor is passive and still measures 68 ohms on
+the same pins, and a high-impedance node produces no bus errors — which is consistent with
+every observation above. The discriminating measurement is to isolate the CANable from the
+bench, leave it USB-powered, and read CANH and CANL against its own ground: a healthy
+transceiver biases them to roughly 2.5 V, a dead one reads 0 V.
+
+A transceiver can be destroyed by a brief contact between CANH/CANL and a supply rail during
+rewiring, which is the manipulation that immediately preceded the outage.

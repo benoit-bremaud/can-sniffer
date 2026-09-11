@@ -5,7 +5,7 @@ import sys
 from PySide6.QtCore import QCoreApplication, QSettings
 from PySide6.QtWidgets import QApplication
 
-from can_sniffer.capture import SocketCanAdapter
+from can_sniffer.capture import PythonCanAdapter
 from can_sniffer.protocol import ProtocolDecoder
 from can_sniffer.qt_settings import QtSettingsRepository
 from can_sniffer.session import CaptureSession
@@ -30,7 +30,7 @@ def create_application(arguments: list[str] | None = None) -> QApplication:
 
 def create_capture_window() -> CaptureWindow:
     """Build the production capture dependency graph."""
-    session = CaptureSession(SocketCanAdapter(), ProtocolDecoder())
+    session = CaptureSession(PythonCanAdapter(), ProtocolDecoder())
     repository = QtSettingsRepository(QSettings())
     preferences = repository.load()
     settings_widget = SettingsWidget(preferences, repository)

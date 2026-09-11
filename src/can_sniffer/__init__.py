@@ -2,8 +2,12 @@
 
 from can_sniffer.capture import (
     CanCapturePort,
+    CanInterface,
     CaptureConfiguration,
-    SocketCanAdapter,
+    ControllerModePort,
+    IpLinkControllerMode,
+    ListenOnlyUnavailableError,
+    PythonCanAdapter,
     receive_frames,
 )
 from can_sniffer.protocol import (
@@ -33,7 +37,11 @@ __all__ = [
     "ModuleState",
     "ProtocolDecoder",
     "SystemMeasurements",
-    "SocketCanAdapter",
+    "PythonCanAdapter",
+    "CanInterface",
+    "ControllerModePort",
+    "IpLinkControllerMode",
+    "ListenOnlyUnavailableError",
     "receive_frames",
     "CaptureSession",
 ]

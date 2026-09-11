@@ -9,7 +9,9 @@ description = "Graphical CAN bus monitor for Infypower charger modules on Linux.
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "python-can>=4.5,<5",
+    # The serial extra pulls pyserial, required by the slcan backend; letting python-can
+    # own that range avoids drifting from what it actually supports.
+    "python-can[serial]>=4.5,<5",
     "PySide6>=6.8,<7",
 ]
 
