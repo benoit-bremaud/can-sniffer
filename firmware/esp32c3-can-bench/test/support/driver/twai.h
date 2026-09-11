@@ -34,8 +34,17 @@ struct twai_message_t {
     unsigned extd = 0, ss = 0, rtr = 0, self = 0;
 };
 #define TWAI_GENERAL_CONFIG_DEFAULT(tx, rx, mode) {tx, rx, mode, 5, 5, 0}
+// brp = 80 MHz / (rate * (1 + tseg_1 + tseg_2)), matching the real configs closely enough
+// that a test can recover the rate arithmetically and tell one config from another.
+#define TWAI_TIMING_CONFIG_10KBITS() {400, 15, 4, 3, false}
+#define TWAI_TIMING_CONFIG_20KBITS() {200, 15, 4, 3, false}
+#define TWAI_TIMING_CONFIG_50KBITS() {80, 15, 4, 3, false}
+#define TWAI_TIMING_CONFIG_100KBITS() {40, 15, 4, 3, false}
 #define TWAI_TIMING_CONFIG_125KBITS() {32, 15, 4, 3, false}
 #define TWAI_TIMING_CONFIG_250KBITS() {16, 15, 4, 3, false}
+#define TWAI_TIMING_CONFIG_500KBITS() {8, 15, 4, 3, false}
+#define TWAI_TIMING_CONFIG_800KBITS() {5, 15, 4, 3, false}
+#define TWAI_TIMING_CONFIG_1MBITS() {4, 15, 4, 3, false}
 #define TWAI_FILTER_CONFIG_ACCEPT_ALL() {0, 0xFFFFFFFF, true}
 esp_err_t twai_driver_install(const twai_general_config_t*, const twai_timing_config_t*, const twai_filter_config_t*);
 esp_err_t twai_start();

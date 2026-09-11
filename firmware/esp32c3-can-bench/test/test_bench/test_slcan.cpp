@@ -55,8 +55,9 @@ void parser_accepts_the_commands_the_host_sends() {
 void parser_maps_only_the_bitrates_the_controller_can_produce() {
     SlcanParser parser;
     const struct { const char* line; uint32_t hertz; } supported[] = {
-        {"S2\r", 50000}, {"S3\r", 100000}, {"S4\r", 125000},
-        {"S5\r", 250000}, {"S6\r", 500000}, {"S8\r", 1000000},
+        {"S0\r", 10000},  {"S1\r", 20000},  {"S2\r", 50000},
+        {"S3\r", 100000}, {"S4\r", 125000}, {"S5\r", 250000},
+        {"S6\r", 500000}, {"S8\r", 1000000},
     };
     for (const auto& entry : supported) {
         const SlcanRequest request = feed_line(parser, entry.line);
@@ -64,10 +65,10 @@ void parser_maps_only_the_bitrates_the_controller_can_produce() {
                           static_cast<int>(request.command));
         TEST_ASSERT_EQUAL_UINT32(entry.hertz, static_cast<uint32_t>(request.bitrate));
     }
-    // S0 10k, S1 20k, S7 750k as python-can sends it, S9 83.3k: the controller cannot
-    // produce any of them. Refusing is the point — a substituted rate looks like success
-    // until the bus misbehaves.
-    for (const char* line : {"S0\r", "S1\r", "S7\r", "S9\r", "S\r", "SA\r", "S44\r"}) {
+    // S9 is 83.3k, which the SDK does not offer. S7 is worse than missing: LAWICEL and the
+    // SDK call it 800k while python-can sends it for 750k, so honouring it would mean
+    // guessing which host is talking. An ambiguous code is refused, never resolved.
+    for (const char* line : {"S7\r", "S9\r", "S\r", "SA\r", "S44\r"}) {
         TEST_ASSERT_EQUAL(static_cast<int>(SlcanCommand::Invalid),
                           static_cast<int>(feed_line(parser, line).command));
     }

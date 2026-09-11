@@ -10,24 +10,29 @@ char hex_char(uint8_t nibble) {
     return static_cast<char>(nibble < 10 ? '0' + nibble : 'A' + (nibble - 10));
 }
 
-/// Map a LAWICEL speed digit. Codes the controller cannot produce are deliberately absent:
-/// 0 (10k), 1 (20k), 7 (750k as python-can sends it) and 9 (83.3k) are refused, never
-/// rounded to a neighbour the operator did not ask for.
-bool speed_code(char digit, SlcanBitrate& bitrate) {
+/// Map a LAWICEL speed digit onto a rate the controller can actually produce.
+///
+/// Two codes are deliberately absent. 9 is 83.3 kbit/s, which the SDK does not offer. 7 is
+/// worse than missing: LAWICEL and the SDK call it 800 kbit/s while python-can sends it for
+/// 750, so honouring it would mean guessing which host is talking. An ambiguous code is
+/// refused rather than resolved by assumption.
+bool speed_code(char digit, Bitrate& bitrate) {
     switch (digit) {
-    case '2': bitrate = SlcanBitrate::K50; return true;
-    case '3': bitrate = SlcanBitrate::K100; return true;
-    case '4': bitrate = SlcanBitrate::K125; return true;
-    case '5': bitrate = SlcanBitrate::K250; return true;
-    case '6': bitrate = SlcanBitrate::K500; return true;
-    case '8': bitrate = SlcanBitrate::M1; return true;
+    case '0': bitrate = Bitrate::K10; return true;
+    case '1': bitrate = Bitrate::K20; return true;
+    case '2': bitrate = Bitrate::K50; return true;
+    case '3': bitrate = Bitrate::K100; return true;
+    case '4': bitrate = Bitrate::K125; return true;
+    case '5': bitrate = Bitrate::K250; return true;
+    case '6': bitrate = Bitrate::K500; return true;
+    case '8': bitrate = Bitrate::M1; return true;
     default: return false;
     }
 }
 
 /// C++11 forbids aggregate-initialising a struct that carries member initialisers, so
 /// build requests here rather than dropping the defaults from the header.
-SlcanRequest make(SlcanCommand command, SlcanBitrate bitrate = SlcanBitrate::K125) {
+SlcanRequest make(SlcanCommand command, Bitrate bitrate = Bitrate::K125) {
     SlcanRequest request;
     request.command = command;
     request.bitrate = bitrate;
@@ -81,7 +86,7 @@ SlcanRequest SlcanParser::interpret() const {
         // makes this profile safe to point at a bus, so it is reported and tested as such.
         return make(SlcanCommand::Transmit);
     case 'S': {
-        SlcanBitrate bitrate = SlcanBitrate::K125;
+        Bitrate bitrate = Bitrate::K125;
         if (size_ != 2 || !speed_code(line_[1], bitrate)) {
             return make(SlcanCommand::Invalid);
         }

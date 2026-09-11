@@ -3,6 +3,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "bench.h"
+
 namespace bench {
 
 /// Longest line the host may send. Real commands are far shorter; anything longer is
@@ -34,23 +36,10 @@ enum class SlcanCommand {
     Invalid,    ///< Unknown, malformed, or a rate the controller cannot produce.
 };
 
-/// Bitrates the ESP32 TWAI controller can produce. The host may request others; they are
-/// refused rather than approximated, because a silently substituted rate is indistinguishable
-/// from a working one until the bus misbehaves.
-enum class SlcanBitrate : uint32_t {
-    K50 = 50000,
-    K100 = 100000,
-    K125 = 125000,
-    K250 = 250000,
-    K500 = 500000,
-    K800 = 800000,
-    M1 = 1000000,
-};
-
 /// Outcome of feeding one byte: the command, plus its argument when it carries one.
 struct SlcanRequest {
     SlcanCommand command = SlcanCommand::None;
-    SlcanBitrate bitrate = SlcanBitrate::K125;  ///< Only meaningful for SetBitrate.
+    Bitrate bitrate = Bitrate::K125;  ///< Only meaningful for SetBitrate.
 };
 
 /// Line-based parser. Commands are terminated by CR; LF is tolerated and ignored so a

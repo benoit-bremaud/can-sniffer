@@ -18,6 +18,13 @@ public:
     enum class ReceiveResult { Empty, Frame, Error };
     /// Nonblocking Classical CAN read; output changes only for a validated frame.
     ReceiveResult receive(twai_message_t& frame);
+    /// Whether the controller may influence the bus at all. Listen-only is enforced by the
+    /// peripheral: the SDK defines it as no transmissions and no acknowledgments.
+    enum class Mode { Normal, ListenOnly };
+    /// Select the mode for the next start. Ignored while installed; the channel is closed
+    /// and reopened to change it, which is what the slcan protocol already requires.
+    void configure(Mode mode) { mode_ = mode; }
+    Mode mode() const { return mode_; }
     bool start(bench::Bitrate bitrate = bench::Bitrate::K125) override;
     bool submit(const bench::Frame& frame) override;
     bench::Result poll() override;
@@ -26,4 +33,5 @@ private:
     Diagnostics diagnostics_;
     bool installed_ = false;
     bool bus_off_ = false;
+    Mode mode_ = Mode::Normal;
 };

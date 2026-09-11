@@ -370,6 +370,40 @@ void adapter_uses_real_contract_fields() {
     TEST_ASSERT_TRUE(port.stop()); TEST_ASSERT_FALSE(sdk.installed);
 }
 
+void adapter_selects_mode_and_timing_per_bitrate() {
+    // Listen-only is the property the sniffer profile rests on, so assert the mode that
+    // actually reaches the driver rather than the one we intended to request.
+    TwaiPort port;
+    port.configure(TwaiPort::Mode::ListenOnly);
+    TEST_ASSERT_TRUE(port.start(Bitrate::K500));
+    TEST_ASSERT_EQUAL(TWAI_MODE_LISTEN_ONLY, sdk.general.mode);
+    TEST_ASSERT_TRUE(port.stop());
+
+    // Every rate reaches its own timing config; recovering it arithmetically catches a
+    // table that compiles but points two rates at the same configuration.
+    const struct { Bitrate bitrate; uint32_t hertz; } rates[] = {
+        {Bitrate::K10, 10000},   {Bitrate::K20, 20000},   {Bitrate::K50, 50000},
+        {Bitrate::K100, 100000}, {Bitrate::K125, 125000}, {Bitrate::K250, 250000},
+        {Bitrate::K500, 500000}, {Bitrate::K800, 800000}, {Bitrate::M1, 1000000},
+    };
+    for (const auto& entry : rates) {
+        TwaiPort each;
+        TEST_ASSERT_TRUE(each.start(entry.bitrate));
+        TEST_ASSERT_EQUAL(kExpectedTwaiMode, sdk.general.mode);
+        TEST_ASSERT_EQUAL_UINT32(
+            entry.hertz,
+            80000000u / (sdk.timing.brp * (1u + sdk.timing.tseg_1 + sdk.timing.tseg_2)));
+        TEST_ASSERT_TRUE(each.stop());
+    }
+
+    // A value outside the enum is refused rather than defaulted: silently selecting another
+    // rate is the defect this firmware exists to avoid.
+    TwaiPort invalid;
+    const int starts_before = sdk.starts;
+    TEST_ASSERT_FALSE(invalid.start(static_cast<Bitrate>(42)));
+    TEST_ASSERT_EQUAL(starts_before, sdk.starts);  // refused before touching the driver
+}
+
 void adapter_install_and_start_errors() {
     TwaiPort port;
     sdk.install_result = ESP_FAIL; TEST_ASSERT_FALSE(port.start());
@@ -706,6 +740,7 @@ int main() {
     RUN_TEST(autonomous_errors_never_rearm);
     RUN_TEST(autonomous_final_completion_and_cleanup_failures);
     RUN_TEST(adapter_uses_real_contract_fields);
+    RUN_TEST(adapter_selects_mode_and_timing_per_bitrate);
     RUN_TEST(adapter_install_and_start_errors);
     RUN_TEST(adapter_polls_alerts_and_status);
     RUN_TEST(adapter_bus_off_between_poll_and_stop);
