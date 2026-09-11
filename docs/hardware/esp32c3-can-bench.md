@@ -5,7 +5,9 @@
 > `transmitted=10 failed=0` with `tx_error_counter=0` and `bus_error_count=0` throughout,
 > clean stop and no eleventh frame. Confirmed in Cangaroo on ttyACM0 at 125 kbit/s over
 > three consecutive series (30 frames, 0 failures), deltas measured 0.9995–1.0006 s. An LED
-> flash on GPIO8 accompanies each acknowledged frame. White scenario (`varied125`) accepted
+> flash on GPIO8 accompanies each frame the controller counts as transmitted — here, each
+> acknowledged frame; under `esp32c3-buttons-noack` the same counter advances with nothing on
+> the bus, so that image stutters the pulse instead. White scenario (`varied125`) accepted
 > the same day: twelve frames, `run_transmitted=12 run_failed=0`, IDs rotating
 > `…DE`/`…DF`/`…E0`, first byte `00`–`0B` with no gap, second byte tracking the ID, tail
 > `AA 55 00 FF 12 34`, deltas 0.9991–1.0009 s. Red scenario (`reference250`) accepted the

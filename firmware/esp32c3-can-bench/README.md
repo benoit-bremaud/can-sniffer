@@ -107,6 +107,14 @@ is implemented by `esp32c3-buttons`. It never starts CAN or emits data frames at
 Wire normally-open contacts from blue GPIO0, red GPIO1 and white GPIO5 to GND; firmware
 uses internal pull-ups. No 5 V on these inputs. GPIO4/3 remain CAN TX/RX.
 
+The onboard GPIO8 LED (active low) flashes 250 ms each time the transmitted counter
+increments, in every profile except `esp32c3-receiver`. Leave GPIO8 externally unwired: it
+is a strapping pin, driven only after boot. Read it as an activity indicator, not a state
+display — it stays dark for a frame that was queued but never acknowledged, which is what a
+bitrate mismatch looks like. It mirrors the controller's TX_SUCCESS accounting and nothing
+more, so under `esp32c3-buttons-noack` that accounting is fabricated and the pulse is
+stuttered to say so.
+
 | Button | Bitrate | Series (extended Classical CAN, DLC 8) |
 | --- | --- | --- |
 | Blue | 125 kbit/s | 10 attempts, ID `0x001ABCDE`, bytes `01 02 03 04 05 06 07 08` |
@@ -196,7 +204,10 @@ Read the result strictly:
 | Still `TX_FAILED` | The fault is at or before the transceiver: its 3.3 V supply, the TX line, or the transceiver itself. Nothing about the receiver is proven either way. |
 
 Both the banner and every `status` sample carry `selftest=no_ack ack_required=0`, so a
-captured log can never be mistaken for an acknowledged run. A "pass" here says nothing about
+captured log can never be mistaken for an acknowledged run. Both of those need a USB host,
+and this image is routinely used without one — so the activity LED, the only output left in
+that case, stutters its pulse here instead of emitting the steady flash of a genuine
+acknowledged run. A "pass" here says nothing about
 the receiver or the wiring beyond the transceiver, and this image must never be used to
 declare hardware acceptance. Reflash `esp32c3-buttons` as soon as the diagnostic is done.
 

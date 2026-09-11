@@ -1,7 +1,8 @@
 # ESP32-C3 three-button bench tests
 
-> **Status**: detailed conception approved by the maintainer on 2026-09-10;
-> implementation in progress, hardware validation pending.
+> **Status**: implemented and hardware-accepted on 2026-09-10. All three scenarios were
+> verified on the isolated bench — blue and white at 125 kbit/s, red at 250 kbit/s — with
+> zero error counters; see the [bench log](../../hardware/esp32c3-can-bench.md).
 > **Related work**: [bench Issue #45](https://github.com/benoit-bremaud/can-sniffer/issues/45).
 > The additional bitrate/button scope needs its own GitHub tracking before publication;
 > this local specification is the current work item. No issue/PR has been created for it.
@@ -12,9 +13,9 @@ Select repeatable CAN reception tests using three physical momentary buttons, wi
 ESP32 powered independently of a USB host. This is an isolated low-voltage bench only:
 never connect the generator to a charger or vehicle. The Python application is unchanged.
 
-The new opt-in `esp32c3-buttons` build replaces boot-triggered emission with physical
+The opt-in `esp32c3-buttons` build replaces boot-triggered emission with physical
 activation. Existing manual and autonomous build profiles retain their behavior and tests.
-The board currently contains the autonomous image: adding buttons alone does not change it.
+Flashing is what changes the board: compiling a profile never displaces the resident image.
 
 ## Scenarios
 
@@ -52,7 +53,9 @@ or external voltage is applied to the inputs. For four-leg buttons, verify which
 contacts actually switch; same-side pins may already be connected. Illuminated buttons
 need a separate wiring review; do not connect their lamp supply to a GPIO.
 
-GPIO4/3 stay dedicated to CAN TX/RX. Avoid strapping GPIO2/8/9, USB GPIO18/19 and flash
+GPIO4/3 stay dedicated to CAN TX/RX. GPIO8 drives the onboard LED (B11) and is configured
+only in `setup()`, after boot has released its strapping function; it must stay externally
+unwired. Avoid the remaining strapping pins GPIO2/9, USB GPIO18/19 and flash
 pins. GPIO5 also has a JTAG function, but this bench uses native USB Serial/JTAG and no
 external GPIO JTAG probe. Confirm the prototype carrier does not use GPIO0/1/5 itself.
 The supplied Super Mini photo exposes these labels; it does not prove the carrier wiring.
@@ -92,7 +95,13 @@ with CAN disconnected, particularly while the previous autonomous image may stil
   must never block button sampling or CAN deadline processing.
 - B10: No physical emergency-stop claim. The red button selects Reference250, not stop.
   Operator can reset/remove ESP32 power; a frame already on wire cannot be recalled.
-  No long-press gestures, LEDs, persistent settings, arbitrary frame editor or bitrate scan.
+  No long-press gestures, persistent settings, arbitrary frame editor or bitrate scan.
+- B11 (approved 2026-09-10, after operator feedback): exactly one output, the onboard GPIO8
+  LED. It pulses 250 ms each time the transmitted counter increments, so a USB-less run is
+  observable at all. It is an activity indicator, never a state display: it stays dark for a
+  queued-but-unacknowledged frame, and it must never gate, delay or reorder emission.
+  Under `BENCH_NO_ACK` the pulse is deliberately stuttered so it cannot be read as proof of
+  acknowledgement (N3).
 
 ## Use cases
 

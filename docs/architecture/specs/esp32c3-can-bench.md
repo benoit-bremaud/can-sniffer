@@ -1,7 +1,10 @@
 # ESP32-C3 CAN bench generator
 
 > **Feature**: [Issue #45](https://github.com/benoit-bremaud/can-sniffer/issues/45)
-> **Status**: conception approved by the maintainer on 2026-09-09 — software implemented locally; hardware acceptance pending
+> **Status**: conception approved by the maintainer on 2026-09-09 — implemented, and
+> hardware-accepted on 2026-09-10 for the manual, autonomous and three-button profiles; see
+> the [bench log](../../hardware/esp32c3-can-bench.md). `BENCH_NO_ACK` (N1-N3) stays
+> diagnostic-only and is never an acceptance path.
 
 ## Purpose and boundary
 
@@ -127,6 +130,25 @@ dependencies stay inward; scope is limited to observation; no additional pattern
 - A6: Unit tests cover countdown boundaries, counter limits, late ticks/rollover,
   final completion, cancellation, faults and cleanup. Compile and test both profiles;
   exercise the autonomous entrypoint with no USB host and with USB reconnection.
+
+### No-ACK self-test (`BENCH_NO_ACK`, diagnostic only)
+
+- N1: The flag composes with any one profile and changes a single thing — the controller is
+  installed in `TWAI_MODE_NO_ACK`, so a transmission is reported successful with no
+  acknowledgement on the bus. Bitrate, pins, frame, single-shot behaviour and every runner
+  are identical to the profile it extends. Only `esp32c3-buttons-noack` is a reviewed image;
+  combining the flag with the autonomous profile is rejected at compile time, because that
+  image would emit after every boot, report fabricated success and need no USB host.
+- N2: It answers exactly one question, and only when a normal-mode run fails with
+  `TX_FAILED`: is the fault inside the ESP32 and its transceiver, or beyond them? Success
+  proves the controller, the transceiver and the bit timing. It proves nothing whatsoever
+  about the receiver, the wiring past the transceiver, or the bus.
+- N3: Because a pass here is not evidence, every output channel must be self-labelling. The
+  help banner announces the image, every `status` sample carries
+  `selftest=no_ack ack_required=0`, and the B11 LED pulse is stuttered so it cannot be
+  mistaken for the steady flash of an acknowledged run — the banner and the marker both
+  require USB, and this image is used without a host. Results are recorded as diagnostic
+  observations, never as acceptance, and the normal image is reflashed immediately after.
 
 `BurstRunner` owns the one-shot lifecycle and delegates CAN policy to `BenchController`.
 The latter exposes `start_immediately()` to schedule a first attempt after the external
