@@ -73,6 +73,11 @@ module-measurement mapping is documented in
 
 ## Contributing
 
+For a standalone hardware test generator, see the
+[ESP32-C3 CAN bench firmware](firmware/esp32c3-can-bench/README.md).
+It is separate from the desktop application, disabled at boot, and restricted to a bench
+physically disconnected from every charger. Physical acceptance is still pending.
+
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the project workflow and validation requirements.
 
 ## License
