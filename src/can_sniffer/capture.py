@@ -82,7 +82,7 @@ class SlcanChannel(Protocol):
         """Close the channel, write the bitrate, reopen. Order matters to the firmware."""
 
 
-def _parse_listen_only(payload: str) -> bool | None:
+def _parse_listen_only(payload: str, channel: str) -> bool | None:
     """Read the controller mode out of `ip -json` output, refusing anything ambiguous."""
     try:
         links = json.loads(payload)
@@ -90,6 +90,10 @@ def _parse_listen_only(payload: str) -> bool | None:
         return None
     # `dev <name>` cannot match a filter keyword, so exactly one link is expected.
     if not isinstance(links, list) or len(links) != 1 or not isinstance(links[0], dict):
+        return None
+    # Name it explicitly rather than trusting the query to have filtered: this mirrors
+    # the check the transmission inspector already performs on the same output.
+    if links[0].get("ifname") != channel:
         return None
     info = links[0].get("linkinfo")
     if not isinstance(info, dict) or info.get("info_kind") != "can":
@@ -131,7 +135,7 @@ class IpLinkControllerMode:
             return None
         if completed.returncode != 0:
             return None
-        return _parse_listen_only(completed.stdout)
+        return _parse_listen_only(completed.stdout, channel)
 
 
 class PythonCanAdapter:

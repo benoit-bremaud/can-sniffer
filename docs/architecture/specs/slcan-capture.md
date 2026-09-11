@@ -1,7 +1,9 @@
 # Native slcan capture and verified listen-only
 
 > **Feature**: [Issue #48](https://github.com/benoit-bremaud/can-sniffer/issues/48)
-> **Status**: conception submitted for approval; no implementation started.
+> **Status**: conception approved 2026-09-11 and implemented in the same pull
+> request. Live-bus hardware validation is outstanding; see
+> "What the bench can and cannot prove".
 
 ## Purpose and boundary
 

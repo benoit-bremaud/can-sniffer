@@ -82,6 +82,7 @@ class CaptureWindow(QMainWindow):
         self._timer.setInterval(50)
         self._timer.timeout.connect(self._poll_capture)
 
+        self._hinted_interface: CanInterface | None = None
         self.interface_input = QComboBox()
         self.interface_input.setAccessibleName("CAN backend")
         for backend in CanInterface:
@@ -207,6 +208,12 @@ class CaptureWindow(QMainWindow):
 
     def _update_channel_hint(self) -> None:
         """Channel means an interface name on socketcan, a serial device on slcan."""
+        # Clear rather than carry a channel across backends: "can0" submitted as a
+        # serial device path is the kind of silently wrong input this change exists to
+        # stop. The placeholder states what the selected backend expects.
+        if self._hinted_interface is not None:
+            self.channel_input.clear()
+        self._hinted_interface = self.selected_interface()
         if self.selected_interface() is CanInterface.SLCAN:
             self.channel_input.setPlaceholderText("/dev/serial/by-id/usb-...")
             self.channel_input.setToolTip(

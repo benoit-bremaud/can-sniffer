@@ -175,7 +175,10 @@ def test_socketcan_refuses_when_listen_only_is_not_confirmed() -> None:
     assert created == []
 
 
-CAN_LINK = '[{{"linkinfo":{{"info_kind":"can","info_data":{{"ctrlmode":{modes}}}}}}}]'
+CAN_LINK = (
+    '[{{"ifname":"can0","linkinfo":'
+    '{{"info_kind":"can","info_data":{{"ctrlmode":{modes}}}}}}}]'
+)
 
 
 @pytest.mark.parametrize(
@@ -186,9 +189,15 @@ CAN_LINK = '[{{"linkinfo":{{"info_kind":"can","info_data":{{"ctrlmode":{modes}}}
         (CAN_LINK.format(modes="[]"), False),
         (CAN_LINK.format(modes='["loopback"]'), False),
         # No ctrlmode key at all: the controller has no special mode set.
-        ('[{"linkinfo":{"info_kind":"can","info_data":{}}}]', False),
+        ('[{"ifname":"can0","linkinfo":{"info_kind":"can","info_data":{}}}]', False),
         # A link alias can contain the flag name; only the parsed ctrlmode counts.
-        ('[{"ifalias":"listen-only","linkinfo":{"info_kind":"veth"}}]', None),
+        ('[{"ifname":"can0","ifalias":"listen-only","linkinfo":{"info_kind":"veth"}}]', None),
+        # Another interface's answer must never authorise the requested one.
+        (
+            '[{"ifname":"can1","linkinfo":'
+            '{"info_kind":"can","info_data":{"ctrlmode":["listen-only"]}}}]',
+            None,
+        ),
         # `dev` should make this impossible, but two links means the query widened.
         ("[{},{}]", None),
         ("not json", None),

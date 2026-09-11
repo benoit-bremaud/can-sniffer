@@ -26,9 +26,11 @@ sequenceDiagram
     Adapter->>Adapter: validate channel, bitrate, listen_only
 
     alt interface = slcan
-        Adapter->>Bus: Bus(slcan, channel, bitrate, listen_only)
-        Bus->>Device: S<n> then L
-        Note over Bus,Device: bitrate and listen-only are applied by the adapter
+        Adapter->>Bus: Bus(slcan, channel, listen_only)
+        Bus->>Device: L
+        Adapter->>Bus: set_bitrate(bitrate)
+        Bus->>Device: C then S<n> then L
+        Note over Adapter,Device: set_bitrate closes first: the firmware ignores a<br/>bitrate command on an open channel, so a channel left<br/>open by another client would keep its previous one
     else interface = socketcan
         Adapter->>Mode: is_listen_only(channel)
         Mode->>Device: read controller mode
@@ -52,6 +54,9 @@ sequenceDiagram
 - Failure is closed, never silent: an undeterminable mode is treated as not listen-only.
   A tool that wrongly believes it is passive is worse than one that refuses to start.
 - The verification is a port so the subprocess stays at the boundary and tests use a double.
+- The bitrate is not passed to the constructor: only `set_bitrate` performs the
+  close/configure/open sequence the firmware requires. If it raises, the adapter releases
+  the serial port the constructor already claimed.
 - `listen_only=False` remains rejected for every backend; the invariant did not change, it
   became enforceable on one backend and verified on the other.
 - Channel means an interface name (`can0`) for socketcan and a serial device path for slcan.
