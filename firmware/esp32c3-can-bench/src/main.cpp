@@ -23,6 +23,11 @@
 #if (BENCH_AUTONOMOUS + BENCH_BUTTONS + BENCH_RECEIVER) > 1
 #error "Select only one bench profile"
 #endif
+#if BENCH_NO_ACK && BENCH_AUTONOMOUS
+// That image would emit after every boot, report fabricated success and need no USB host,
+// leaving no channel able to announce that the success means nothing.
+#error "BENCH_NO_ACK must not be combined with the autonomous profile"
+#endif
 
 namespace {
 TwaiPort can;
@@ -41,6 +46,10 @@ bench::CommandParser parser;
 #if !BENCH_RECEIVER
 bench::ActivityPulse led;
 uint32_t led_succeeded = 0;
+#if BENCH_NO_ACK
+// Half-period of the self-test stutter, well under kPulseMs so the flash reads as broken.
+constexpr uint32_t kSelfTestStutterMs = 30;
+#endif
 #endif
 bool connected = false;
 uint32_t dropped_logs = 0;
@@ -143,7 +152,15 @@ void status_line() {
 void service_led(uint32_t now) {
     const uint32_t succeeded = controller.status().succeeded;
     if (succeeded != led_succeeded) { led_succeeded = succeeded; led.pulse(now); }
+#if BENCH_NO_ACK
+    // NO_ACK counts a success with nothing on the bus, so the steady flash of a genuine
+    // acknowledged run must never appear here: stutter it. The banner and the status
+    // marker both need USB; this image is used without a host, where the LED is all there is.
+    const bool lit = led.active(now) && ((now / kSelfTestStutterMs) % 2) == 0;
+    digitalWrite(bench::kLedPin, lit ? LOW : HIGH);
+#else
     digitalWrite(bench::kLedPin, led.active(now) ? LOW : HIGH);
+#endif
 }
 #endif
 

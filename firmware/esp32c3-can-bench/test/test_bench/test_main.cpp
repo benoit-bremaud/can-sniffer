@@ -538,9 +538,23 @@ void application_buttons_without_usb() {
     TEST_ASSERT_EQUAL(HIGH, sdk.outputs[kLedPin]);  // Active low: dark while nothing is sent.
     sdk.alerts = TWAI_ALERT_TX_SUCCESS; sdk.now++; loop();
     TEST_ASSERT_EQUAL(LOW, sdk.outputs[kLedPin]);   // Flash armed by the acknowledged frame.
+    // Sample twice inside one pulse, a stutter half-period apart. The self-test image must
+    // break the flash up; every other image must hold it steady. Without this, the NO_ACK
+    // build would blink exactly like a genuine acknowledged run on a disconnected bus.
+    const int first_sample = sdk.outputs[kLedPin];
+    sdk.now += 30; loop();
+#if BENCH_NO_ACK
+    TEST_ASSERT_NOT_EQUAL(first_sample, sdk.outputs[kLedPin]);
+#else
+    TEST_ASSERT_EQUAL(first_sample, sdk.outputs[kLedPin]);
+#endif
     Serial.connected = true; loop(); output_contains("BUTTONS image");
     usb_command("start\nhelp\nstatus\nBAD\n\n"); output_contains("use a physical button");
     output_contains("invalid command"); output_contains("scenario=reference125");
+#if BENCH_NO_ACK
+    output_contains("SELF-TEST IMAGE");                  // Banner, once per connection.
+    output_contains("selftest=no_ack ack_required=0\n");  // Marker, on every status sample.
+#endif
     sdk.now = 32031; usb_command("stop\n"); TEST_ASSERT_EQUAL(1, sdk.transmits);
     TEST_ASSERT_EQUAL(HIGH, sdk.outputs[kLedPin]);  // Pulse expired; it never latches on.
     TEST_ASSERT_FALSE(sdk.installed);
@@ -582,7 +596,11 @@ void application_usb_lifecycle_and_faults() {
     usb_command("start\n"); TEST_ASSERT_EQUAL(1, sdk.starts);
     sdk.now = 999; loop(); TEST_ASSERT_EQUAL(0, sdk.transmits);
     sdk.now = 1000; loop(); TEST_ASSERT_EQUAL(1, sdk.transmits); output_contains("queued=1");
+    TEST_ASSERT_EQUAL(HIGH, sdk.outputs[kLedPin]);  // Queued is not acknowledged.
     sdk.alerts = TWAI_ALERT_TX_SUCCESS; sdk.now = 1001; loop(); output_contains("transmitted=1");
+    TEST_ASSERT_EQUAL(LOW, sdk.outputs[kLedPin]);   // Flash tracks the acknowledgement.
+    sdk.now = 1001 + ActivityPulse::kPulseMs; loop();
+    TEST_ASSERT_EQUAL(HIGH, sdk.outputs[kLedPin]);
     // An input flood must not hide a buffered stop behind another scheduled frame.
     sdk.now = 2000; Serial.send(std::string(64, '\n') + "stop\n");
     loop(); TEST_ASSERT_EQUAL(1, sdk.transmits);
@@ -613,7 +631,14 @@ void application_autonomous_without_usb() {
     sdk.now = 9999; loop(); TEST_ASSERT_EQUAL(0, sdk.installs);
     sdk.now = 10000; loop(); TEST_ASSERT_EQUAL(1, sdk.transmits);
     TEST_ASSERT_FALSE(Serial.connected);
+    // The USB-less path is this profile's only LED update site, and the LED is its only
+    // output: assert it here or a deleted service_led() call would go unnoticed.
+    TEST_ASSERT_EQUAL(OUTPUT, sdk.modes[kLedPin]);
+    TEST_ASSERT_EQUAL(HIGH, sdk.outputs[kLedPin]);
     sdk.alerts = TWAI_ALERT_TX_SUCCESS; sdk.now = 10001; loop();
+    TEST_ASSERT_EQUAL(LOW, sdk.outputs[kLedPin]);
+    sdk.now = 10001 + ActivityPulse::kPulseMs; loop();
+    TEST_ASSERT_EQUAL(HIGH, sdk.outputs[kLedPin]);  // Expires; never latches on.
     Serial.connected = true; loop(); output_contains("AUTONOMOUS image");
     usb_command("start\nhelp\nstatus\nBAD\n\n"); output_contains("cannot restart");
     output_contains("invalid command");
