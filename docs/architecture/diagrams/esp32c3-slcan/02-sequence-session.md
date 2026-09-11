@@ -25,9 +25,9 @@ sequenceDiagram
     Bus->>Codec: S&lt;n&gt;
     alt bitrate the controller can produce
         Codec-->>Bus: ACK
-    else 10k, 20k, 750k, 83.3k
+    else 750k or 83.3k
         Codec-->>Bus: BEL
-        Note over Codec,Bus: rejected, never substituted:<br/>a silent fallback is the defect<br/>this profile exists to avoid
+        Note over Codec,Bus: 83.3k is absent from the SDK; 750k is worse<br/>than missing, since LAWICEL reads S7 as 800k<br/>while python-can sends it for 750. An ambiguous<br/>code is refused, never resolved by assumption
     end
 
     Bus->>Codec: L

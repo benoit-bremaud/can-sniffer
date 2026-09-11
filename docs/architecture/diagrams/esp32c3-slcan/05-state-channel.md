@@ -37,6 +37,10 @@ stateDiagram-v2
 - Rejecting `S<n>` on an open channel is what prevents the defect this project has already
   paid for twice: a bitrate silently ignored while the tool reports success. The rejection is
   audible because it is a BEL, not silence.
+- The controller produces 10k, 20k, 50k, 100k, 125k, 250k, 500k, 800k and 1M, so only two
+  LAWICEL codes are refused: `S9` at 83.3k, which the SDK does not offer, and `S7`, which
+  LAWICEL and the SDK read as 800k while python-can sends it for 750k. Honouring an ambiguous
+  code would mean guessing which host is talking.
 - `L` and `O` differ only in the installed controller mode. `L` is
   `TWAI_MODE_LISTEN_ONLY`, which the SDK defines as not influencing the bus at all — no
   transmissions and no acknowledgments. `O` exists for the two-node bench, where nothing else
