@@ -7,7 +7,7 @@ import subprocess
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Protocol
+from typing import Protocol, cast
 
 import can
 
@@ -72,6 +72,26 @@ class CanBus(Protocol):
 
 
 BusFactory = Callable[[CaptureConfiguration], CanBus]
+
+
+class SlcanChannel(Protocol):
+    """The close/configure/open surface python-can's slcan bus exposes."""
+
+    def close(self) -> None:
+        """Write the channel-close command."""
+
+    def set_bitrate(self, bitrate: int) -> None:
+        """Write the bitrate command; only honoured on a closed channel."""
+
+    def open(self) -> None:
+        """Write the channel-open command, listen-only or normal."""
+
+
+def _reopen_slcan(channel: SlcanChannel, bitrate: int) -> None:
+    """Close, set the bitrate, then reopen — in that order, always."""
+    channel.close()
+    channel.set_bitrate(bitrate)
+    channel.open()
 
 
 class IpLinkControllerMode:
@@ -171,14 +191,20 @@ class PythonCanAdapter:
     @staticmethod
     def _create_bus(configuration: CaptureConfiguration) -> CanBus:
         if configuration.interface is CanInterface.SLCAN:
-            # This backend drives the device itself: bitrate and listen-only are applied,
-            # not merely declared. It sends S<n> then L.
-            return can.Bus(
+            bus = can.Bus(
                 interface="slcan",
                 channel=configuration.channel,
-                bitrate=configuration.bitrate,
                 listen_only=configuration.listen_only,
             )
+            # python-can's open() writes only O or L and never closes first, while the
+            # firmware ignores a bitrate command on an already-open channel. A channel
+            # left open by a previous client would therefore silently keep its old
+            # bitrate. Re-run the full close/configure/open sequence so the declared
+            # bitrate is the applied one, which is the whole point of this backend.
+            # python-can types the factory as BusABC; the slcan bus really does
+            # expose this surface, and the cast keeps that narrowing explicit.
+            _reopen_slcan(cast(SlcanChannel, bus), configuration.bitrate)
+            return bus
         # socketcan takes neither bitrate nor listen_only; both are set out of band.
         return can.Bus(
             interface="socketcan",

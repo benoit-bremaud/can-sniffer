@@ -34,6 +34,7 @@ class FakeBus:
     def __init__(self, messages: Iterable[can.Message]) -> None:
         self.messages = iter(messages)
         self.shutdown_called = False
+        self.sequence: list[str] = []
 
     def recv(self, timeout: float | None = None) -> can.Message | None:
         del timeout
@@ -41,6 +42,15 @@ class FakeBus:
 
     def shutdown(self) -> None:
         self.shutdown_called = True
+
+    def close(self) -> None:
+        self.sequence.append("close")
+
+    def set_bitrate(self, bitrate: int) -> None:
+        self.sequence.append(f"set_bitrate={bitrate}")
+
+    def open(self) -> None:
+        self.sequence.append("open")
 
 
 def test_adapter_opens_and_converts_standard_frame() -> None:
@@ -121,9 +131,11 @@ def test_receive_frames_yields_until_timeout() -> None:
 def test_slcan_backend_applies_bitrate_and_listen_only(monkeypatch: pytest.MonkeyPatch) -> None:
     """The whole point of this backend: what is declared is what reaches the device."""
     calls: list[dict[str, object]] = []
+    bus = FakeBus([])
+
     def record(**kwargs: object) -> FakeBus:
         calls.append(kwargs)
-        return FakeBus([])
+        return bus
 
     monkeypatch.setattr(can, "Bus", record)
     mode = FakeControllerMode(True)
@@ -141,10 +153,12 @@ def test_slcan_backend_applies_bitrate_and_listen_only(monkeypatch: pytest.Monke
         {
             "interface": "slcan",
             "channel": "/dev/serial/by-id/usb-CANable",
-            "bitrate": 250_000,
             "listen_only": True,
         }
     ]
+    # The bitrate is applied by the explicit reopen, not by the constructor, because a
+    # channel left open by a previous client would otherwise keep its old one.
+    assert bus.sequence == ["close", "set_bitrate=250000", "open"]
     # Nothing to verify out of band: this backend sets the mode itself.
     assert mode.channels == []
     adapter.close()
@@ -198,3 +212,26 @@ def test_ip_link_reports_mode_and_never_guesses(monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setattr("can_sniffer.capture.shutil.which", lambda name: None)
     assert reader.is_listen_only("can0") is None
+
+
+def test_slcan_reopens_so_the_declared_bitrate_is_the_applied_one() -> None:
+    """python-can's open() writes only O/L; a stale open channel would keep its bitrate."""
+    from can_sniffer.capture import _reopen_slcan
+
+    calls: list[tuple[str, int | None]] = []
+
+    class RecordingChannel:
+        def close(self) -> None:
+            calls.append(("close", None))
+
+        def set_bitrate(self, bitrate: int) -> None:
+            calls.append(("set_bitrate", bitrate))
+
+        def open(self) -> None:
+            calls.append(("open", None))
+
+    _reopen_slcan(RecordingChannel(), 125_000)
+
+    # The firmware only honours a bitrate command on a closed channel, so order is the
+    # contract, not an implementation detail.
+    assert calls == [("close", None), ("set_bitrate", 125_000), ("open", None)]

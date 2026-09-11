@@ -78,10 +78,25 @@ the open/closed state handling in order to vary one constructor call. The existi
 | S5 | Port double in tests; no subprocess spawned in the suite | — |
 | S7, S8 | Channel validation per backend; distinct error types | UI shows the expected channel form |
 
-Acceptance uses the ESP32-C3 bench as ground truth: the `varied125` scenario must arrive as
-twelve frames with rotating identifiers, a first byte running `00` to `0B` with no gap, and
-the `AA 55 00 FF 12 34` tail. That scenario is chosen over the fixed one because it fails
-visibly if the adapter drops, reorders or mistranslates a frame.
+### What the bench can and cannot prove
+
+The ESP32-C3 bench is the intended ground truth for capture: the `varied125` scenario must
+arrive as twelve frames with rotating identifiers, a first byte running `00` to `0B` with no
+gap, and the `AA 55 00 FF 12 34` tail. That scenario is chosen over the fixed one because it
+fails visibly if the adapter drops, reorders or mistranslates a frame.
+
+It cannot, however, exercise listen-only. The bench has two nodes: if the sniffer stays
+silent, nothing acknowledges the generator, it fails on its first frame and there is nothing
+to capture. Listen-only only has meaning on a bus that already carries two other active
+nodes — the charger. On the bench, the shipped path is therefore validated with an injected
+factory that opens in normal mode, which exercises every line except the one selecting
+`listen_only`; that line is covered by unit tests asserting `L` is requested. **That `L`
+actually silences the adapter on the wire remains unproven by any automated or bench test.**
+
+**Status: the bench run is outstanding.** It was attempted on 2026-09-11 and could not be
+completed — the adapter stopped acknowledging, and a pyserial reference sequence that had
+worked earlier the same day failed identically, which rules the software out but leaves the
+capture unverified against real traffic. See the [bench log](../../hardware/esp32c3-can-bench.md).
 
 Happy path, sad path and edge cases are required; total coverage stays at or above 90%; Ruff
 and strict mypy must pass.
