@@ -4,7 +4,8 @@
 
 ## Context
 
-Shows the proposed release gate and finite-run behavior. This profile is distinct from the
+Shows the implemented release gate and finite-run behavior, hardware-validated on
+2026-09-10. This profile is distinct from the
 existing boot-triggered autonomous image; it never starts merely because power is applied.
 
 ## Diagram

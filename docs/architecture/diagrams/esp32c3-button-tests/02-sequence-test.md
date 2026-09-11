@@ -15,4 +15,4 @@ CAN controller. GPIO/USB and SDK adapters depend inward on pure logic.
 
 - Stop and fault processing precede submission; final queue acceptance is not completion.
 - The bounded loop does not wait on USB availability or button release.
-- Detailed conception is proposed, not implemented or physically validated.
+- Implemented and hardware-validated on 2026-09-10 for all three scenarios.

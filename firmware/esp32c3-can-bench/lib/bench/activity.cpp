@@ -7,9 +7,11 @@ void ActivityPulse::pulse(uint32_t now) {
     armed_ = true;
 }
 
-bool ActivityPulse::active(uint32_t now) const {
-    // Unsigned subtraction is wrap-safe; a stale pulse expires instead of latching on.
-    return armed_ && static_cast<uint32_t>(now - started_) < kPulseMs;
+bool ActivityPulse::active(uint32_t now) {
+    // The delta is wrap-safe, but armed_ must be cleared on expiry: left set, the window
+    // re-opens every 2^32 ms and flashes ~49.7 days later with no transmission at all.
+    if (armed_ && static_cast<uint32_t>(now - started_) >= kPulseMs) { armed_ = false; }
+    return armed_;
 }
 
 }  // namespace bench

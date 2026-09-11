@@ -4,8 +4,8 @@
 
 ## Context
 
-Operator goals for a standalone bench. Scenario categories are accepted; detailed conception
-is pending validation. Internal modules are intentionally absent from this actor-goal view.
+Operator goals for a standalone bench. Scenario categories and detailed conception are
+accepted, and all three scenarios were hardware-validated on 2026-09-10. Internal modules are intentionally absent from this actor-goal view.
 
 ## Diagram
 

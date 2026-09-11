@@ -12,8 +12,9 @@ public:
     static constexpr uint32_t kPulseMs = 250;
     /// (Re)arm a full-length pulse; calling during a pulse extends it from now.
     void pulse(uint32_t now);
-    /// True while the pulse is still due. A pulse never survives its own duration.
-    bool active(uint32_t now) const;
+    /// True while the pulse is still due. A pulse never survives its own duration, and
+    /// expiry is latched, so a millis() wrap can never bring a stale pulse back.
+    bool active(uint32_t now);
 private:
     uint32_t started_ = 0;
     bool armed_ = false;

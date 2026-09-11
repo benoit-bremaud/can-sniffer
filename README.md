@@ -75,9 +75,12 @@ module-measurement mapping is documented in
 
 For a standalone hardware test generator, see the
 [ESP32-C3 CAN bench firmware](firmware/esp32c3-can-bench/README.md).
-It is separate from the desktop application, disabled at boot, and restricted to a bench
-physically disconnected from every charger. Its manual, autonomous and three-button
-profiles were accepted on hardware on 2026-09-10.
+It is separate from the desktop application and restricted to a bench physically
+disconnected from every charger. Its manual, three-button and receiver profiles stay silent
+until an explicit operator action; the autonomous profile is the exception and deliberately
+arms one bounded series after each boot or reset, so it is flashed only with CAN
+disconnected. The three-button profile was hardware-accepted on 2026-09-10; the other
+profiles have been observed working but their acceptance checklists remain open.
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the project workflow and validation requirements.
 

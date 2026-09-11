@@ -243,6 +243,10 @@ void activity_pulse_expires_rearms_and_survives_rollover() {
     TEST_ASSERT_TRUE(pulse.active(late));
     TEST_ASSERT_TRUE(pulse.active(static_cast<uint32_t>(late + ActivityPulse::kPulseMs - 1)));
     TEST_ASSERT_FALSE(pulse.active(static_cast<uint32_t>(late + ActivityPulse::kPulseMs)));
+    // Expiry is latched: coming back around to the original window must stay dark, or the
+    // board would flash once every 49.7 days with nothing transmitted.
+    TEST_ASSERT_FALSE(pulse.active(late));
+    TEST_ASSERT_FALSE(pulse.active(static_cast<uint32_t>(late + 1)));
 }
 
 void names_cover_status_values() {

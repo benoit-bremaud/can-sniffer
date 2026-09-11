@@ -1,10 +1,12 @@
 # ESP32-C3 CAN bench generator
 
 > **Feature**: [Issue #45](https://github.com/benoit-bremaud/can-sniffer/issues/45)
-> **Status**: conception approved by the maintainer on 2026-09-09 — implemented, and
-> hardware-accepted on 2026-09-10 for the manual, autonomous and three-button profiles; see
-> the [bench log](../../hardware/esp32c3-can-bench.md). `BENCH_NO_ACK` (N1-N3) stays
-> diagnostic-only and is never an acceptance path.
+> **Status**: conception approved by the maintainer on 2026-09-09 — implemented, with the
+> three-button profile hardware-accepted on 2026-09-10 (all three scenarios, counters
+> recorded). The manual and autonomous profiles have each been observed transmitting and
+> being acknowledged, but their acceptance checklists are not complete and both stay open;
+> the evidence actually recorded is in the [bench log](../../hardware/esp32c3-can-bench.md).
+> `BENCH_NO_ACK` (N1-N3) stays diagnostic-only and is never an acceptance path.
 
 ## Purpose and boundary
 

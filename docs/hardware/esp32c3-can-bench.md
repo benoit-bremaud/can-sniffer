@@ -21,6 +21,15 @@
 > `arb_lost_count=1` and `rx_error_counter=1`, the signature of an active node at the wrong
 > speed, as opposed to the `tx_error_counter=8` with silent receive counters seen when
 > nothing is on the bus at all. Use Cangaroo to watch traffic, never to configure it.
+>
+> **Manual profile**, observed 2026-09-10 while isolating that fault: with the CANable opened
+> directly over slcan at 125 kbit/s, `start` produced eight frames at 1 Hz, each received as
+> `T001ABCDE80102030405060708`, the ESP32 reporting `transmitted=8 failed=0` with
+> `tx_error_counter=0` and `bus_error_count=0`. That evidences emission and acknowledgement
+> only; steps 5-9 of its checklist below — stop, USB-loss behaviour, the absent-ACK test and
+> bus-off handling — have not been run, so manual acceptance stays **open**.
+> **Autonomous profile**: the operator reported correct reception of the fixed series on
+> 2026-09-10, with no counter-level record kept, so its acceptance stays **open** as well.
 > **Scope**: isolated bench only, never connected to a charger or vehicle.
 
 ## Before power
