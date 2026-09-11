@@ -709,6 +709,13 @@ def test_window_selects_backend_and_states_the_expected_channel_form(
     window.channel_input.setText("/dev/serial/by-id/usb-CANable")
     window.start_capture()
 
+    # An entry carrying something that is not a backend falls back to the guarded
+    # default rather than propagating a value the adapter cannot honour.
+    window.interface_input.insertItem(0, "bogus", "bogus")
+    window.interface_input.setCurrentIndex(0)
+    assert window.selected_interface() is CanInterface.SOCKETCAN
+    window.interface_input.setCurrentIndex(window.interface_input.findData(CanInterface.SLCAN))
+
     # The chosen backend must reach the capture configuration, not just the widget.
     assert controller.configurations == [
         CaptureConfiguration(

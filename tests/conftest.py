@@ -1,0 +1,19 @@
+"""Shared test doubles for the capture boundary."""
+
+from __future__ import annotations
+
+
+class FakeControllerMode:
+    """Stands in for the `ip link` reader, which the suite must never actually run.
+
+    Shared rather than duplicated per module: it encodes the shape of a protocol, so a
+    second copy would silently go stale when ControllerModePort changes.
+    """
+
+    def __init__(self, answer: bool | None = True) -> None:
+        self.answer = answer
+        self.channels: list[str] = []
+
+    def is_listen_only(self, channel: str) -> bool | None:
+        self.channels.append(channel)
+        return self.answer

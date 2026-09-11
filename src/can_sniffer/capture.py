@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from collections.abc import Callable, Iterator
@@ -75,23 +76,31 @@ BusFactory = Callable[[CaptureConfiguration], CanBus]
 
 
 class SlcanChannel(Protocol):
-    """The close/configure/open surface python-can's slcan bus exposes."""
-
-    def close(self) -> None:
-        """Write the channel-close command."""
+    """The one method the adapter needs beyond the bus contract."""
 
     def set_bitrate(self, bitrate: int) -> None:
-        """Write the bitrate command; only honoured on a closed channel."""
-
-    def open(self) -> None:
-        """Write the channel-open command, listen-only or normal."""
+        """Close the channel, write the bitrate, reopen. Order matters to the firmware."""
 
 
-def _reopen_slcan(channel: SlcanChannel, bitrate: int) -> None:
-    """Close, set the bitrate, then reopen — in that order, always."""
-    channel.close()
-    channel.set_bitrate(bitrate)
-    channel.open()
+def _parse_listen_only(payload: str) -> bool | None:
+    """Read the controller mode out of `ip -json` output, refusing anything ambiguous."""
+    try:
+        links = json.loads(payload)
+    except json.JSONDecodeError:
+        return None
+    # `dev <name>` cannot match a filter keyword, so exactly one link is expected.
+    if not isinstance(links, list) or len(links) != 1 or not isinstance(links[0], dict):
+        return None
+    info = links[0].get("linkinfo")
+    if not isinstance(info, dict) or info.get("info_kind") != "can":
+        return None
+    data = info.get("info_data")
+    if not isinstance(data, dict):
+        return None
+    modes = data.get("ctrlmode")
+    if not isinstance(modes, list):
+        return False
+    return any(str(mode).lower() == "listen-only" for mode in modes)
 
 
 class IpLinkControllerMode:
@@ -108,7 +117,11 @@ class IpLinkControllerMode:
             return None
         try:
             completed = subprocess.run(  # noqa: S603 - fixed executable, no shell
-                [executable, "-details", "link", "show", channel],
+                # `dev` pins the argument into the device slot: without it a value like
+                # "up" or "type" is read as a filter and lists every interface on the
+                # host. `-json` is parsed, never grepped — the flag name also appears in
+                # a link alias, which a substring test would accept as confirmation.
+                [executable, "-details", "-json", "link", "show", "dev", channel],
                 capture_output=True,
                 text=True,
                 timeout=_IP_TIMEOUT_SECONDS,
@@ -118,7 +131,7 @@ class IpLinkControllerMode:
             return None
         if completed.returncode != 0:
             return None
-        return "listen-only" in completed.stdout
+        return _parse_listen_only(completed.stdout)
 
 
 class PythonCanAdapter:
@@ -147,14 +160,18 @@ class PythonCanAdapter:
             raise ValueError("listen-only mode is mandatory")
         if self._bus is not None:
             raise RuntimeError("CAN adapter is already open")
-        if configuration.interface is CanInterface.SOCKETCAN:
+        # slcan writes the L command itself. Every other backend must be proven, so a
+        # future one is guarded by default rather than silently exempt.
+        if configuration.interface is not CanInterface.SLCAN:
             self._require_listen_only(configuration.channel)
         self._bus = self._bus_factory(configuration)
 
     def _require_listen_only(self, channel: str) -> None:
         """Fail closed: python-can cannot set this mode on socketcan, only observe it."""
         confirmed = self._controller_mode.is_listen_only(channel)
-        if confirmed:
+        # Identity, not truthiness: an injected port returning 1 or "unknown" is not a
+        # confirmation, and this is the single gate protecting the invariant.
+        if confirmed is True:
             return
         detail = (
             "it is not in listen-only mode"
@@ -184,9 +201,11 @@ class PythonCanAdapter:
 
     def close(self) -> None:
         """Shutdown the bus and make the adapter reusable."""
-        if self._bus is not None:
-            self._bus.shutdown()
-            self._bus = None
+        # Drop the reference first: a shutdown that raises must not leave the adapter
+        # believing it is still open, which would reject every later start.
+        bus, self._bus = self._bus, None
+        if bus is not None:
+            bus.shutdown()
 
     @staticmethod
     def _create_bus(configuration: CaptureConfiguration) -> CanBus:
@@ -196,14 +215,19 @@ class PythonCanAdapter:
                 channel=configuration.channel,
                 listen_only=configuration.listen_only,
             )
-            # python-can's open() writes only O or L and never closes first, while the
-            # firmware ignores a bitrate command on an already-open channel. A channel
-            # left open by a previous client would therefore silently keep its old
-            # bitrate. Re-run the full close/configure/open sequence so the declared
-            # bitrate is the applied one, which is the whole point of this backend.
-            # python-can types the factory as BusABC; the slcan bus really does
-            # expose this surface, and the cast keeps that narrowing explicit.
-            _reopen_slcan(cast(SlcanChannel, bus), configuration.bitrate)
+            # set_bitrate closes, writes S<n>, then reopens. That order is required:
+            # the firmware ignores a bitrate command on an open channel, so a channel
+            # left open by a previous client would otherwise keep its old bitrate --
+            # silently, which is exactly the failure this backend exists to avoid.
+            # The cast records that python-can types the factory as BusABC while the
+            # slcan bus really does expose set_bitrate.
+            try:
+                cast(SlcanChannel, bus).set_bitrate(configuration.bitrate)
+            except BaseException:
+                # The constructor already claimed the serial port and open() has not
+                # stored the bus yet, so nothing else would ever release it.
+                bus.shutdown()
+                raise
             return bus
         # socketcan takes neither bitrate nor listen_only; both are set out of band.
         return can.Bus(

@@ -1,20 +1,13 @@
 import can
+from conftest import FakeControllerMode
 
 from can_sniffer.capture import CaptureConfiguration, PythonCanAdapter
-
-
-class ConfirmedListenOnly:
-    """Local double: this suite must never shell out to `ip`."""
-
-    def is_listen_only(self, channel: str) -> bool | None:
-        del channel
-        return True
 
 
 def test_adapter_contract_with_python_can_virtual_backend() -> None:
     receiver = can.Bus(interface="virtual", channel="can-sniffer-integration")
     sender = can.Bus(interface="virtual", channel="can-sniffer-integration")
-    adapter = PythonCanAdapter(lambda configuration: receiver, ConfirmedListenOnly())
+    adapter = PythonCanAdapter(lambda configuration: receiver, FakeControllerMode(True))
 
     try:
         adapter.open(CaptureConfiguration(channel="vcan0"))

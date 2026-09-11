@@ -1,7 +1,9 @@
+import subprocess
 from collections.abc import Iterable
 
 import can
 import pytest
+from conftest import FakeControllerMode
 
 from can_sniffer.capture import (
     CanInterface,
@@ -11,18 +13,6 @@ from can_sniffer.capture import (
     PythonCanAdapter,
     receive_frames,
 )
-
-
-class FakeControllerMode:
-    """Stands in for the `ip link` reader, which the suite must never actually run."""
-
-    def __init__(self, answer: bool | None = True) -> None:
-        self.answer = answer
-        self.channels: list[str] = []
-
-    def is_listen_only(self, channel: str) -> bool | None:
-        self.channels.append(channel)
-        return self.answer
 
 
 def listening(bus_factory: object = None) -> PythonCanAdapter:
@@ -158,7 +148,9 @@ def test_slcan_backend_applies_bitrate_and_listen_only(monkeypatch: pytest.Monke
     ]
     # The bitrate is applied by the explicit reopen, not by the constructor, because a
     # channel left open by a previous client would otherwise keep its old one.
-    assert bus.sequence == ["close", "set_bitrate=250000", "open"]
+    # set_bitrate is what closes, writes S<n> and reopens; the constructor never
+    # applies the bitrate, so a stale open channel would keep its previous one.
+    assert bus.sequence == ["set_bitrate=250000"]
     # Nothing to verify out of band: this backend sets the mode itself.
     assert mode.channels == []
     adapter.close()
@@ -172,66 +164,129 @@ def test_socketcan_refuses_when_listen_only_is_not_confirmed() -> None:
         return FakeBus([])
 
     for answer, expected in ((False, "not in listen-only"), (None, "could not be determined")):
-        adapter = PythonCanAdapter(factory, FakeControllerMode(answer))
+        mode = FakeControllerMode(answer)
+        adapter = PythonCanAdapter(factory, mode)
         with pytest.raises(ListenOnlyUnavailableError, match=expected):
-            adapter.open(CaptureConfiguration(channel="can0"))
+            adapter.open(CaptureConfiguration(channel="can1"))
+        # The channel verified must be the one requested, not a hardcoded default.
+        assert mode.channels == ["can1"]
 
     # Fail closed: an unconfirmed channel is never opened, so it can never acknowledge.
     assert created == []
 
 
-def test_ip_link_reports_mode_and_never_guesses(monkeypatch: pytest.MonkeyPatch) -> None:
-    reader = IpLinkControllerMode()
+CAN_LINK = '[{{"linkinfo":{{"info_kind":"can","info_data":{{"ctrlmode":{modes}}}}}}}]'
 
-    def completed(returncode: int, stdout: str) -> object:
-        return type("Completed", (), {"returncode": returncode, "stdout": stdout})()
 
-    def answer(returncode: int, stdout: str) -> None:
-        monkeypatch.setattr(
-            "can_sniffer.capture.subprocess.run",
-            lambda *args, **kwargs: completed(returncode, stdout),
-        )
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        (CAN_LINK.format(modes='["listen-only"]'), True),
+        (CAN_LINK.format(modes='["loopback","listen-only"]'), True),
+        (CAN_LINK.format(modes="[]"), False),
+        (CAN_LINK.format(modes='["loopback"]'), False),
+        # No ctrlmode key at all: the controller has no special mode set.
+        ('[{"linkinfo":{"info_kind":"can","info_data":{}}}]', False),
+        # A link alias can contain the flag name; only the parsed ctrlmode counts.
+        ('[{"ifalias":"listen-only","linkinfo":{"info_kind":"veth"}}]', None),
+        # `dev` should make this impossible, but two links means the query widened.
+        ("[{},{}]", None),
+        ("not json", None),
+        ("[]", None),
+    ],
+)
+def test_ip_link_reads_the_controller_mode(
+    payload: str, expected: bool | None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A link alias or a widened query must never be read as a confirmation."""
+    invocations: list[tuple[object, dict[str, object]]] = []
+
+    def run(argv: object, **kwargs: object) -> object:
+        invocations.append((argv, kwargs))
+        return type("Completed", (), {"returncode": 0, "stdout": payload})()
 
     monkeypatch.setattr("can_sniffer.capture.shutil.which", lambda name: "/usr/bin/ip")
+    monkeypatch.setattr("can_sniffer.capture.subprocess.run", run)
 
-    answer(0, "can state ERROR-ACTIVE listen-only on")
-    assert reader.is_listen_only("can0") is True
+    assert IpLinkControllerMode().is_listen_only("can0") is expected
 
-    answer(0, "can state ERROR-ACTIVE")
-    assert reader.is_listen_only("can0") is False
+    # The argv is the contract of this boundary: -details is what prints the mode,
+    # `dev` is what stops a value like "up" being read as a filter, and the timeout is
+    # what keeps a wedged `ip` from freezing the UI thread.
+    argv, kwargs = invocations[-1]
+    assert argv == ["/usr/bin/ip", "-details", "-json", "link", "show", "dev", "can0"]
+    assert kwargs["timeout"] == 5.0
+    assert kwargs["check"] is False
 
-    # Anything ambiguous must be None, which the adapter treats as a refusal.
-    answer(1, "")
-    assert reader.is_listen_only("can0") is None
 
-    def raise_oserror(*args: object, **kwargs: object) -> object:
-        raise OSError("ip vanished")
+@pytest.mark.parametrize(
+    "failure",
+    [OSError("ip vanished"), subprocess.TimeoutExpired(cmd="ip", timeout=5.0)],
+)
+def test_ip_link_never_guesses_when_it_cannot_ask(
+    failure: Exception, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def explode(*args: object, **kwargs: object) -> object:
+        raise failure
 
-    monkeypatch.setattr("can_sniffer.capture.subprocess.run", raise_oserror)
-    assert reader.is_listen_only("can0") is None
+    monkeypatch.setattr("can_sniffer.capture.shutil.which", lambda name: "/usr/bin/ip")
+    monkeypatch.setattr("can_sniffer.capture.subprocess.run", explode)
+    assert IpLinkControllerMode().is_listen_only("can0") is None
 
+
+def test_ip_link_returns_none_without_iproute2(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("can_sniffer.capture.shutil.which", lambda name: None)
-    assert reader.is_listen_only("can0") is None
+    assert IpLinkControllerMode().is_listen_only("can0") is None
 
 
-def test_slcan_reopens_so_the_declared_bitrate_is_the_applied_one() -> None:
-    """python-can's open() writes only O/L; a stale open channel would keep its bitrate."""
-    from can_sniffer.capture import _reopen_slcan
+def test_ip_link_returns_none_when_the_query_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("can_sniffer.capture.shutil.which", lambda name: "/usr/bin/ip")
+    monkeypatch.setattr(
+        "can_sniffer.capture.subprocess.run",
+        lambda *a, **k: type("Completed", (), {"returncode": 1, "stdout": ""})(),
+    )
+    assert IpLinkControllerMode().is_listen_only("can0") is None
 
-    calls: list[tuple[str, int | None]] = []
 
-    class RecordingChannel:
-        def close(self) -> None:
-            calls.append(("close", None))
+def test_slcan_releases_the_device_when_configuration_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A refused bitrate must not leave the serial port claimed by a half-open channel."""
+    bus = FakeBus([])
 
-        def set_bitrate(self, bitrate: int) -> None:
-            calls.append(("set_bitrate", bitrate))
+    def explode(bitrate: int) -> None:
+        raise ValueError("Invalid bitrate, choose one of ...")
 
-        def open(self) -> None:
-            calls.append(("open", None))
+    bus.set_bitrate = explode  # type: ignore[method-assign]
+    monkeypatch.setattr(can, "Bus", lambda **kwargs: bus)
+    adapter = PythonCanAdapter(controller_mode=FakeControllerMode(True))
+    slcan = CaptureConfiguration(channel="/dev/ttyACM0", interface=CanInterface.SLCAN)
 
-    _reopen_slcan(RecordingChannel(), 125_000)
+    with pytest.raises(ValueError, match="Invalid bitrate"):
+        adapter.open(slcan)
 
-    # The firmware only honours a bitrate command on a closed channel, so order is the
-    # contract, not an implementation detail.
-    assert calls == [("close", None), ("set_bitrate", 125_000), ("open", None)]
+    assert bus.shutdown_called is True
+    # The adapter stayed closed, so the operator can retry without restarting the app.
+    bus.shutdown_called = False
+    bus.set_bitrate = lambda bitrate: None  # type: ignore[method-assign]
+    adapter.open(slcan)
+    adapter.close()
+
+
+def test_close_stays_usable_when_shutdown_raises() -> None:
+    """An adapter unplugged mid-capture must not be wedged as permanently open."""
+
+    class FailingBus(FakeBus):
+        def shutdown(self) -> None:
+            raise RuntimeError("device vanished")
+
+    buses: list[FakeBus] = [FailingBus([]), FakeBus([])]
+    adapter = listening(lambda configuration: buses.pop(0))
+
+    adapter.open(CaptureConfiguration(channel="can0"))
+    with pytest.raises(RuntimeError, match="device vanished"):
+        adapter.close()
+
+    # The failed shutdown must not leave the adapter believing it is still open.
+    adapter.open(CaptureConfiguration(channel="can0"))
+    adapter.close()
