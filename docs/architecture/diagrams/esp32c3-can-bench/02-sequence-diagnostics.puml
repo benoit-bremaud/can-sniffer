@@ -1,0 +1,24 @@
+@startuml
+title sd — Consult retained CAN diagnostics (D1–D5)
+actor Operator
+participant "USB application" as App
+participant BenchController as Control
+participant TwaiPort as Port
+participant "ESP-IDF TWAI" as SDK
+App -> Control : service(now)
+Control -> Port : poll()
+Port -> SDK : read alerts and status
+SDK --> Port : values or read errors
+Port -> Port : retain snapshot with availability flags
+Port --> Control : transmission failure
+Control -> Port : stop()
+Port -> SDK : stop / uninstall
+note over Port
+Cleanup does not overwrite the snapshot.
+Next permitted start clears it.
+end note
+Operator -> App : connect USB, request status
+App -> Port : diagnostics() const
+Port --> App : retained snapshot
+App --> Operator : bounded diagnostic lines or unavailable
+@enduml

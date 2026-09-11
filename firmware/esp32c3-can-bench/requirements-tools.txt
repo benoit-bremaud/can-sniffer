@@ -1,0 +1,3 @@
+# Install only in this firmware directory's .venv, never in system Python.
+platformio==6.1.19
+gcovr==8.3

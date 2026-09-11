@@ -1,7 +1,12 @@
 # ESP32-C3 CAN bench generator
 
 > **Feature**: [Issue #45](https://github.com/benoit-bremaud/can-sniffer/issues/45)
-> **Status**: conception approved by the maintainer on 2026-09-09 — implementation pending
+> **Status**: conception approved by the maintainer on 2026-09-09 — implemented, with the
+> three-button profile hardware-accepted on 2026-09-10 (all three scenarios, counters
+> recorded). The manual and autonomous profiles have each been observed transmitting and
+> being acknowledged, but their acceptance checklists are not complete and both stay open;
+> the evidence actually recorded is in the [bench log](../../hardware/esp32c3-can-bench.md).
+> `BENCH_NO_ACK` (N1-N3) stays diagnostic-only and is never an acceptance path.
 
 ## Purpose and boundary
 
@@ -11,6 +16,10 @@ This firmware does not diagnose a charger, determine an unknown bitrate, or prov
 operation. The existing desktop application and its transmission policy are unchanged.
 
 ## Requirements
+
+The following R1–R10 describe the default **manual** profile. The maintainer approved
+the additional autonomous profile below on 2026-09-10; it deliberately changes activation
+and USB-loss behavior only for that explicitly selected build.
 
 - R1: No CAN controller start or transmission at boot. Commands arrive through native USB CDC.
 - R2: Use Classical CAN, extended ID `0x001ABCDE`, DLC 8 and payload
@@ -47,18 +56,121 @@ operation. The existing desktop application and its transmission policy are unch
 
 ## Design and toolchain
 
+### Inverse bench reception (approved 2026-09-10)
+
+UC6 — Verify CANable transmission with the ESP32 receiver. Primary actor: Operator.
+Precondition: isolated low-voltage bench, never connected to a charger or vehicle.
+Success: the ESP32 records the expected extended ID, DLC and bytes after a known CANable
+transmission. Failure/absence is not a unique diagnosis of hardware failure.
+
+- RX1: Opt-in `esp32c3-receiver`, exclusive with autonomous/buttons flags. No CAN start
+  at boot. USB `start` explicitly starts normal-mode reception at 125 kbit/s, GPIO4/3.
+  Normal mode supplies ACK/error signaling; this is not listen-only and not for chargers.
+- RX2: The receiver application never constructs or calls the emission controller. It
+  never submits a data frame. `start` while ready is idempotent, with no counter reset.
+- RX3: `BenchReceiver` in the hardware boundary reuses `TwaiPort` configuration, polling
+  diagnostics and cleanup. Its nonblocking service reads at most one frame per loop.
+  It retains a saturating count and the last valid Classical CAN frame in RAM. It supports
+  standard/extended, DLC 0–8 and RTR (no data display for RTR); malformed ID/DLC faults.
+- RX4: `status` prints ready/stopped/fault, count, last frame and retained diagnostics.
+  Individual reception also prints the last frame. USB absence/slow output never blocks
+  reception or loses the retained last frame. Disconnect discards commands, not capture.
+  Reconnection never starts/restarts CAN. No unbounded application capture buffer.
+- RX5: `stop` closes CAN, retaining results. A new start from stopped clears them. Start
+  from fault is rejected until explicit stop successfully cleans up, except bus-off which
+  requires reset. Initialization, SDK read, malformed frame and polled driver errors stop
+  capture; empty RX queue is normal. No retries or bus recovery. Cleanup failure stays fault.
+- RX6: Tests use real application/receiver/adapter with SDK doubles, including no-data,
+  exact frames, invalid fields, faults, stop, restart, USB backlog/loss and zero TX calls.
+  Build all four profiles and maintain >=90% authored native line coverage per profile.
+
+The receiver is a small hardware-boundary collaborator, not protocol-domain logic. It adds
+no SDK dependency to `lib/bench`, no new general-purpose service or abstract factory. The
+existing adapter seam and SDK doubles suffice. The review finds requirements/test traceability,
+inward domain dependencies, bounded storage/work, and no need for an additional design pattern.
+See the [receiver sequence](../diagrams/esp32c3-can-bench/02-sequence-receiver.md).
+
+### Retained TWAI diagnostics (approved 2026-09-10)
+
+- D1: `TwaiPort` retains the latest polling snapshot in RAM: raw alert bits, separate
+  alert/status read availability, controller state, TX/RX error counters, failed TX,
+  missed/overrun RX, lost arbitration and bus error counts. No SDK type enters the domain.
+- D2: Polling captures the snapshot before returning a fault to `BenchController`.
+  Cleanup and subsequent polls on an uninstalled driver preserve it. A new permitted
+  start attempt clears it, including when installation fails. Rejected starts preserve it.
+  Before any poll the snapshot is explicitly unavailable; it is not a live status query.
+- D3: `status` renders the retained snapshot after cleanup or late USB attachment.
+  Failed reads are explicitly unavailable, never represented as zero errors. Logs remain
+  bounded and best-effort; the snapshot survives dropped logs but not MCU reset.
+- D4: No change to pins, timing, activation, single-shot transmission or fail-stop policy.
+  These counters are clues, not a unique diagnosis of missing ACK or wiring failure.
+- D5: Native tests cover success, fault retention, invalid reads, cleanup, new-session reset,
+  late USB retrieval and maximum counter formatting. Build all three firmware profiles and
+  maintain at least 90% authored line coverage in each native profile.
+
+The [diagnostic sequence](../diagrams/esp32c3-can-bench/02-sequence-diagnostics.md)
+captures the ordering. This reuses the existing adapter and USB boundary: no new service,
+domain port or persistence is needed. Requirements/sequence/tests agree on snapshot lifetime;
+dependencies stay inward; scope is limited to observation; no additional pattern is justified.
+
+### Autonomous bench profile (approved 2026-09-10)
+
+- A1: `esp32c3-autonomous` is opt-in at build time; `esp32c3` remains manual/default.
+  Power-up/reset is the operator's trigger. Never connect this image to a charger or vehicle.
+- A2: Wait 10000 ms from MCU boot before starting CAN and scheduling the first frame.
+  Use the same frame, pins and bitrate as R2. Submit at most 10 single-shot attempts,
+  spaced at least 1000 ms apart, with no catch-up bursts. Do not require USB enumeration.
+- A3: Preserve R6/R7 error and completion semantics. Wait for the final completion (or
+  its 250 ms deadline) before cleanup. Stop on the first failure, even if fewer than ten
+  frames were sent. Successful cleanup after ten completions leaves the controller stopped.
+- A4: One series per boot. Completion, error or `stop` permanently consumes the series
+  until MCU reset/power cycle. USB open/close/reconnect never restarts it. `start` is rejected
+  in this profile; `stop` also cancels the initial countdown. Status/help remain available.
+- A5: USB absence is expected and does not cancel this autonomous series. Logging remains
+  bounded and optional. A USB connection is not an interlock. Reset (including an upload
+  reset or brownout) arms a new series; flash only with CAN physically disconnected.
+- A6: Unit tests cover countdown boundaries, counter limits, late ticks/rollover,
+  final completion, cancellation, faults and cleanup. Compile and test both profiles;
+  exercise the autonomous entrypoint with no USB host and with USB reconnection.
+
+### No-ACK self-test (`BENCH_NO_ACK`, diagnostic only)
+
+- N1: The flag composes with any one profile and changes a single thing — the controller is
+  installed in `TWAI_MODE_NO_ACK`, so a transmission is reported successful with no
+  acknowledgement on the bus. Bitrate, pins, frame, single-shot behaviour and every runner
+  are identical to the profile it extends. Only `esp32c3-buttons-noack` is a reviewed image;
+  combining the flag with the autonomous profile is rejected at compile time, because that
+  image would emit after every boot, report fabricated success and need no USB host.
+- N2: It answers exactly one question, and only when a normal-mode run fails with
+  `TX_FAILED`: is the fault inside the ESP32 and its transceiver, or beyond them? Success
+  proves the controller, the transceiver and the bit timing. It proves nothing whatsoever
+  about the receiver, the wiring past the transceiver, or the bus.
+- N3: Because a pass here is not evidence, every output channel must be self-labelling. The
+  help banner announces the image, every `status` sample carries
+  `selftest=no_ack ack_required=0`, and the B11 LED pulse is stuttered so it cannot be
+  mistaken for the steady flash of an acknowledged run — the banner and the marker both
+  require USB, and this image is used without a host. Results are recorded as diagnostic
+  observations, never as acceptance, and the normal image is reflashed immediately after.
+
+`BurstRunner` owns the one-shot lifecycle and delegates CAN policy to `BenchController`.
+The latter exposes `start_immediately()` to schedule a first attempt after the external
+countdown, without duplicating transmission/error handling. The USB adapter selects one
+runner at compile time. No new hardware interface, runtime mode switch or persistence.
+The manual sequence is unchanged; the autonomous sequence/state view is maintained separately.
+
 Use PlatformIO Core 6.1.19, espressif32 6.12.0 and the installed Arduino ESP32 framework
 2.0.17 with its ESP-IDF TWAI driver. Pin platform/tool dependencies during implementation.
 Use the ESP32-C3 target with explicit GPIOs and native USB CDC flags. A generic C3 board profile
 is a build starting point, not proof of this Super Mini's flash size or upload settings; verify
 the connected MCU and flash before upload. Do not install into system Python or alter the desktop
-`.venv` / `.venv-test`. Use the existing isolated PlatformIO environment.
+`.venv` / `.venv-test`. Use the firmware directory's isolated `.venv` for PlatformIO tools.
 
-Planned files under `firmware/esp32c3-can-bench/`:
+Implementation files under `firmware/esp32c3-can-bench/`:
 
 - `platformio.ini`: firmware and native test configurations, pinned dependencies.
 - `lib/bench/`: fixed frame, bounded command parser and BenchController state/cadence logic.
-- `src/main.cpp`: composition, USB CDC adapter and TWAI adapter, with no duplicated policy.
+- `src/main.cpp`: composition and USB CDC adapter, with no duplicated policy.
+- `src/twai_port.*`: TWAI adapter, separately compiled against SDK doubles in native tests.
 - `test/`: native unit/component tests and fake boundary implementations.
 - `README.md`: reproducible build, test, coverage and upload instructions.
 

@@ -1,0 +1,28 @@
+@startuml
+title sd — UC5 Autonomous bench reception (A1–A6)
+actor Operator
+participant "Application loop" as App
+participant BurstRunner as Burst
+participant BenchController as Control
+participant "TWAI adapter" as CAN
+Operator -> App : power up isolated bench
+loop Countdown (no USB required)
+  App -> Burst : service(now)
+end
+App -> Burst : tick(now >= boot + 10000 ms)
+Burst -> Control : start_immediately(now)
+Control -> CAN : initialize/start
+loop Up to 10 attempts while no fault or cancellation
+  App -> Burst : service(now), commands, tick(now)
+  Burst -> Control : service(now), tick if below limit
+  Control -> CAN : poll results / submit due single-shot
+  CAN --> Control : accepted, completion or error
+end
+Burst -> Control : stop after final completion or cancellation
+Control -> CAN : cleanup
+note over Burst, Control
+Errors stop through existing controller policy.
+BurstRunner never re-arms without an MCU reset.
+USB reconnection does not schedule another series.
+end note
+@enduml

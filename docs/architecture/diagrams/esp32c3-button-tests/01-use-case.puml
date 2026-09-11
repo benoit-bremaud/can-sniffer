@@ -1,0 +1,17 @@
+@startuml
+title uc — Three-button CAN bench
+left to right direction
+actor Operator
+rectangle "ESP32-C3 button-test firmware" {
+  usecase "UC1 Run a selected reception test" as Run
+  usecase "UC2 Inspect or cancel a test" as Inspect
+}
+Operator --> Run : blue / red / white
+Operator --> Inspect : optional USB
+note bottom of Run
+Isolated bench only, never a charger.
+Blue: reference 125 kbit/s.
+Red: reference 250 kbit/s.
+White: variable contents at 125 kbit/s.
+end note
+@enduml

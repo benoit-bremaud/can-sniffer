@@ -1,0 +1,32 @@
+@startuml
+title sd — UC6 Verify CANable transmission (RX1–RX6)
+actor Operator
+participant "USB application" as App
+participant BenchReceiver as Receiver
+participant TwaiPort as Port
+participant CANable
+Operator -> App : start on isolated bench
+App -> Receiver : start()
+Receiver -> Port : start(125 kbit/s normal mode)
+Port --> Receiver : initialized / error
+App --> Operator : receiver=ready / receiver=fault
+Operator -> CANable : send one known frame after ready
+CANable -> Port : CAN frame
+note over Port : Normal-mode controller supplies ACK automatically.
+loop Each application iteration
+  App -> Receiver : service()
+  Receiver -> Port : poll faults, receive at most one frame
+  alt valid frame
+    Port --> Receiver : received frame
+    Receiver -> Receiver : retain count and last frame
+    App --> Operator : best-effort frame output
+  else empty queue
+    Port --> Receiver : empty (not a fault)
+  else SDK error or malformed frame
+    Receiver -> Port : stop()
+  end
+end
+Operator -> App : status / stop
+App -> Receiver : inspect retained results / stop()
+App --> Operator : retained count, last frame, diagnostics
+@enduml

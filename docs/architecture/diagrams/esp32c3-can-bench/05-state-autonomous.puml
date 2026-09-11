@@ -1,0 +1,25 @@
+@startuml
+title stm — Autonomous bench series (A1–A6)
+[*] --> Countdown
+Countdown --> Emitting : after 10000 ms / start controller, first attempt due
+Countdown --> Finished : stop / cancel series
+Emitting --> Finished : 10 TX_SUCCESS / cleanup succeeds
+Emitting --> Finished : stop / cleanup succeeds
+Emitting --> Fault : initialization, submission, transmission, timeout or cleanup failure
+Fault --> Fault : stop / cleanup fails or bus-off latched
+Fault --> Finished : stop / cleanup succeeds and no bus-off latch
+note right of Countdown
+Power-up/reset arms exactly one series.
+No USB host is required.
+end note
+note right of Emitting
+At most 10 single-shot attempts, 1 Hz.
+Wait for the final completion before stopping.
+USB connection changes do not affect this series.
+end note
+note right of Finished
+No restart via USB or start command.
+Only MCU reset/power cycle re-arms.
+Never connect to a charger.
+end note
+@enduml

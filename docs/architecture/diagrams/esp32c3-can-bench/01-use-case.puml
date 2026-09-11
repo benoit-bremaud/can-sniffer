@@ -7,11 +7,20 @@ rectangle "ESP32-C3 CAN bench firmware" {
   usecase "UC2 Stop emission" as Stop
   usecase "UC3 Inspect status and faults" as Status
   usecase "UC4 Read usage instructions" as Help
+  usecase "UC5 Test reception with an autonomous series" as Burst
+  usecase "UC6 Verify CANable transmission" as Receive
 }
 Operator --> Start
 Operator --> Stop
 Operator --> Status
 Operator --> Help
+Operator --> Burst
+Operator --> Receive
+note bottom of Burst
+Autonomous build only: power-up/reset,
+10 s countdown, at most 10 frames, then stop.
+Precondition: isolated bench, never a charger.
+end note
 note bottom of Start
 Precondition: physically disconnected
 from every charger.
