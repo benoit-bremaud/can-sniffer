@@ -63,6 +63,53 @@ private:
 /// or zero when the frame cannot be represented; `out` must hold kSlcanFrameChars bytes.
 std::size_t encode_frame(const SlcanFrame& frame, char* out, std::size_t capacity);
 
+/// What the session wants written back to the host. Points into the session's own buffer,
+/// so it stays valid only until the next call.
+struct SlcanReply {
+    const char* text = "";
+    std::size_t length = 0;
+};
+
+/// The channel a session drives. Kept SDK-free so the session is exercised natively; the
+/// TWAI adapter and the test double are its two implementations.
+class SlcanChannelPort {
+public:
+    virtual ~SlcanChannelPort() = default;
+    /// Install and start in the requested mode. False must leave the channel closed.
+    virtual bool open(Bitrate bitrate, bool listen_only) = 0;
+    /// Cease and release. False means cleanup is unconfirmed.
+    virtual bool close() = 0;
+    /// LAWICEL status byte built from the controller counters.
+    virtual uint8_t status() = 0;
+};
+
+/// Drives a channel from host commands and renders received frames.
+///
+/// Every command is answered, with CR on success and BEL on refusal. A silent adapter makes
+/// "applied" indistinguishable from "ignored", which is what made the CANable undiagnosable.
+class SlcanSession {
+public:
+    explicit SlcanSession(SlcanChannelPort& port) : port_(port) {}
+    /// Feed one received byte; the reply is empty when the line is still incomplete.
+    SlcanReply feed(char byte);
+    /// Render a frame for the host. Empty when the frame cannot be represented.
+    SlcanReply frame(const SlcanFrame& frame);
+    /// Drop a partial line, for a link reset.
+    void reset();
+    bool is_open() const { return open_; }
+    Bitrate bitrate() const { return bitrate_; }
+    bool listen_only() const { return listen_only_; }
+
+private:
+    SlcanReply reply(bool accepted);
+    SlcanChannelPort& port_;
+    SlcanParser parser_;
+    char out_[kSlcanFrameChars] = {};
+    Bitrate bitrate_ = Bitrate::K125;
+    bool open_ = false;
+    bool listen_only_ = true;
+};
+
 /// Build the LAWICEL status byte from controller counters. Bit 3 is error-passive, bit 5
 /// arbitration lost, bit 6 bus error, bit 7 bus-off; bits 0 and 1 are the queue overruns.
 uint8_t status_flags(bool rx_overrun, bool error_passive, bool arbitration_lost,

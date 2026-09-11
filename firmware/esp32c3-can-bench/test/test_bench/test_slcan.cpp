@@ -159,6 +159,110 @@ void status_byte_follows_the_lawicel_layout() {
     TEST_ASSERT_EQUAL_HEX8(0xE8, status_flags(true, true, true, true, true));
 }
 
+class FakeChannel final : public SlcanChannelPort {
+public:
+    bool open_ok = true, close_ok = true;
+    uint8_t flags = 0;
+    int opens = 0, closes = 0;
+    Bitrate bitrate = Bitrate::K125;
+    bool listen = false;
+
+    bool open(Bitrate requested, bool listen_only) override {
+        ++opens; bitrate = requested; listen = listen_only; return open_ok;
+    }
+    bool close() override { ++closes; return close_ok; }
+    uint8_t status() override { return flags; }
+};
+
+std::string drive(SlcanSession& session, const std::string& line) {
+    std::string answered;
+    for (char byte : line) {
+        const SlcanReply reply = session.feed(byte);
+        answered.append(reply.text, reply.length);
+    }
+    return answered;
+}
+
+void session_applies_the_bitrate_only_on_a_closed_channel() {
+    FakeChannel channel;
+    SlcanSession session(channel);
+
+    TEST_ASSERT_EQUAL_STRING("\r", drive(session, "S5\r").c_str());
+    TEST_ASSERT_EQUAL_STRING("\r", drive(session, "L\r").c_str());
+    TEST_ASSERT_EQUAL(1, channel.opens);
+    TEST_ASSERT_EQUAL_UINT32(250000, static_cast<uint32_t>(channel.bitrate));
+    TEST_ASSERT_TRUE(channel.listen);
+    TEST_ASSERT_TRUE(session.is_open());
+
+    // Retiming a running channel is impossible, so accepting it would report a rate that
+    // was never applied. Refused, and the stored rate is untouched.
+    TEST_ASSERT_EQUAL_STRING("\a", drive(session, "S4\r").c_str());
+    TEST_ASSERT_EQUAL_UINT32(250000, static_cast<uint32_t>(session.bitrate()));
+    // Opening an open channel is equally refused rather than silently re-applied.
+    TEST_ASSERT_EQUAL_STRING("\a", drive(session, "O\r").c_str());
+    TEST_ASSERT_EQUAL(1, channel.opens);
+
+    TEST_ASSERT_EQUAL_STRING("\r", drive(session, "C\r").c_str());
+    TEST_ASSERT_FALSE(session.is_open());
+    TEST_ASSERT_EQUAL_STRING("\r", drive(session, "S4\r").c_str());
+    TEST_ASSERT_EQUAL_STRING("\r", drive(session, "O\r").c_str());
+    TEST_ASSERT_FALSE(channel.listen);
+    TEST_ASSERT_EQUAL_UINT32(125000, static_cast<uint32_t>(channel.bitrate));
+}
+
+void session_reports_every_refusal_instead_of_staying_silent() {
+    FakeChannel channel;
+    SlcanSession session(channel);
+
+    // A transmit request is refused in every state, open or closed.
+    TEST_ASSERT_EQUAL_STRING("\a", drive(session, "T001ABCDE80102030405060708\r").c_str());
+    drive(session, "L\r");
+    TEST_ASSERT_EQUAL_STRING("\a", drive(session, "t1230\r").c_str());
+    TEST_ASSERT_EQUAL_STRING("\a", drive(session, "S9\r").c_str());
+    TEST_ASSERT_EQUAL_STRING("\a", drive(session, "Z\r").c_str());
+
+    // A failing driver is reported, and the channel stays closed rather than half-open.
+    FakeChannel refusing;
+    refusing.open_ok = false;
+    SlcanSession other(refusing);
+    TEST_ASSERT_EQUAL_STRING("\a", drive(other, "L\r").c_str());
+    TEST_ASSERT_FALSE(other.is_open());
+    // Closing an already closed channel is a satisfied request, not an error.
+    TEST_ASSERT_EQUAL_STRING("\r", drive(other, "C\r").c_str());
+    TEST_ASSERT_EQUAL(0, refusing.closes);
+}
+
+void session_answers_status_and_version() {
+    FakeChannel channel;
+    channel.flags = 0xE8;
+    SlcanSession session(channel);
+    TEST_ASSERT_EQUAL_STRING("FE8\r", drive(session, "F\r").c_str());
+    TEST_ASSERT_EQUAL_STRING("V0100\r", drive(session, "V\r").c_str());
+    channel.flags = 0x08;
+    TEST_ASSERT_EQUAL_STRING("F08\r", drive(session, "F\r").c_str());
+}
+
+void session_renders_frames_and_drops_unrepresentable_ones() {
+    FakeChannel channel;
+    SlcanSession session(channel);
+    const SlcanReply line = session.frame(extended_frame());
+    TEST_ASSERT_EQUAL_STRING("T001ABCDE80102030405060708\r",
+                             std::string(line.text, line.length).c_str());
+
+    SlcanFrame broken = extended_frame();
+    broken.dlc = 15;
+    TEST_ASSERT_EQUAL(0, session.frame(broken).length);
+}
+
+void session_drops_a_partial_line_on_reset() {
+    FakeChannel channel;
+    SlcanSession session(channel);
+    session.feed('S');
+    session.reset();
+    TEST_ASSERT_EQUAL_STRING("\r", drive(session, "L\r").c_str());
+    TEST_ASSERT_EQUAL(1, channel.opens);
+}
+
 }  // namespace
 
 void run_slcan_tests() {
@@ -169,4 +273,9 @@ void run_slcan_tests() {
     RUN_TEST(encoder_renders_frames_the_host_can_parse);
     RUN_TEST(encoder_refuses_what_it_cannot_represent);
     RUN_TEST(status_byte_follows_the_lawicel_layout);
+    RUN_TEST(session_applies_the_bitrate_only_on_a_closed_channel);
+    RUN_TEST(session_reports_every_refusal_instead_of_staying_silent);
+    RUN_TEST(session_answers_status_and_version);
+    RUN_TEST(session_renders_frames_and_drops_unrepresentable_ones);
+    RUN_TEST(session_drops_a_partial_line_on_reset);
 }

@@ -126,6 +126,77 @@ std::size_t encode_frame(const SlcanFrame& frame, char* out, std::size_t capacit
     return written;
 }
 
+SlcanReply SlcanSession::reply(bool accepted) {
+    out_[0] = accepted ? kCr : '\a';
+    out_[1] = '\0';
+    SlcanReply answer;
+    answer.text = out_;
+    answer.length = 1;
+    return answer;
+}
+
+void SlcanSession::reset() { parser_.reset(); }
+
+SlcanReply SlcanSession::feed(char byte) {
+    const SlcanRequest request = parser_.feed(byte);
+    switch (request.command) {
+    case SlcanCommand::None:
+        return SlcanReply();
+    case SlcanCommand::Close:
+        // Idempotent: closing a closed channel is a request already satisfied, not an error.
+        open_ = open_ ? !port_.close() : false;
+        return reply(!open_);
+    case SlcanCommand::OpenNormal:
+    case SlcanCommand::OpenListen: {
+        if (open_) { return reply(false); }
+        const bool listen = request.command == SlcanCommand::OpenListen;
+        if (!port_.open(bitrate_, listen)) { return reply(false); }
+        open_ = true;
+        listen_only_ = listen;
+        return reply(true);
+    }
+    case SlcanCommand::SetBitrate:
+        // Refused while open, as every slcan firmware does: the controller cannot retime a
+        // running channel, and accepting it would report a rate that was never applied.
+        if (open_) { return reply(false); }
+        bitrate_ = request.bitrate;
+        return reply(true);
+    case SlcanCommand::Status: {
+        const uint8_t flags = port_.status();
+        out_[0] = 'F';
+        out_[1] = hex_char(static_cast<uint8_t>(flags >> 4));
+        out_[2] = hex_char(static_cast<uint8_t>(flags & 0x0Fu));
+        out_[3] = kCr;
+        out_[4] = '\0';
+        SlcanReply answer;
+        answer.text = out_;
+        answer.length = 4;
+        return answer;
+    }
+    case SlcanCommand::Version: {
+        static const char kVersion[] = "V0100\r";
+        SlcanReply answer;
+        answer.text = kVersion;
+        answer.length = sizeof(kVersion) - 1;
+        return answer;
+    }
+    case SlcanCommand::Transmit:
+    case SlcanCommand::Invalid:
+    default:
+        // Transmission is refused in every state: this profile owns no transmit path.
+        return reply(false);
+    }
+}
+
+SlcanReply SlcanSession::frame(const SlcanFrame& frame) {
+    SlcanReply answer;
+    const std::size_t written = encode_frame(frame, out_, sizeof(out_));
+    if (written == 0) { return answer; }
+    answer.text = out_;
+    answer.length = written;
+    return answer;
+}
+
 uint8_t status_flags(bool rx_overrun, bool error_passive, bool arbitration_lost,
                      bool bus_error, bool bus_off) {
     uint8_t flags = 0;
