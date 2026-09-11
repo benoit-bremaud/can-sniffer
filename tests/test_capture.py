@@ -3,7 +3,31 @@ from collections.abc import Iterable
 import can
 import pytest
 
-from can_sniffer.capture import CaptureConfiguration, SocketCanAdapter, receive_frames
+from can_sniffer.capture import (
+    CanInterface,
+    CaptureConfiguration,
+    IpLinkControllerMode,
+    ListenOnlyUnavailableError,
+    PythonCanAdapter,
+    receive_frames,
+)
+
+
+class FakeControllerMode:
+    """Stands in for the `ip link` reader, which the suite must never actually run."""
+
+    def __init__(self, answer: bool | None = True) -> None:
+        self.answer = answer
+        self.channels: list[str] = []
+
+    def is_listen_only(self, channel: str) -> bool | None:
+        self.channels.append(channel)
+        return self.answer
+
+
+def listening(bus_factory: object = None) -> PythonCanAdapter:
+    """Adapter whose socketcan channel is confirmed listen-only."""
+    return PythonCanAdapter(bus_factory, FakeControllerMode(True))  # type: ignore[arg-type]
 
 
 class FakeBus:
@@ -21,7 +45,7 @@ class FakeBus:
 
 def test_adapter_opens_and_converts_standard_frame() -> None:
     bus = FakeBus([can.Message(arbitration_id=0x123, data=[1, 2], is_extended_id=False)])
-    adapter = SocketCanAdapter(lambda configuration: bus)
+    adapter = listening(lambda configuration: bus)
 
     adapter.open(CaptureConfiguration(channel="can0"))
     frame = adapter.receive()
@@ -44,24 +68,18 @@ def test_default_factory_configures_read_only_socketcan(monkeypatch: pytest.Monk
 
     monkeypatch.setattr(can, "Bus", fake_bus)
 
-    adapter = SocketCanAdapter()
+    adapter = listening()
     adapter.open(CaptureConfiguration(channel="can0"))
 
-    assert calls == [
-        {
-            "interface": "socketcan",
-            "channel": "can0",
-            "bitrate": 125_000,
-            "fd": False,
-            "listen_only": True,
-        }
-    ]
+    # python-can's socketcan backend accepts neither bitrate nor listen_only; passing them
+    # would only restate an intent it silently discards.
+    assert calls == [{"interface": "socketcan", "channel": "can0", "fd": False}]
     adapter.close()
 
 
 def test_adapter_preserves_error_frame_and_timeout() -> None:
     bus = FakeBus([can.Message(is_error_frame=True)])
-    adapter = SocketCanAdapter(lambda configuration: bus)
+    adapter = listening(lambda configuration: bus)
     adapter.open(CaptureConfiguration(channel="can0"))
 
     frame = adapter.receive(timeout=0.1)
@@ -72,7 +90,7 @@ def test_adapter_preserves_error_frame_and_timeout() -> None:
 
 
 def test_adapter_rejects_invalid_configuration_and_lifecycle() -> None:
-    adapter = SocketCanAdapter(lambda configuration: FakeBus([]))
+    adapter = listening(lambda configuration: FakeBus([]))
 
     with pytest.raises(RuntimeError, match="not open"):
         adapter.receive()
@@ -91,10 +109,92 @@ def test_adapter_rejects_invalid_configuration_and_lifecycle() -> None:
 
 def test_receive_frames_yields_until_timeout() -> None:
     bus = FakeBus([can.Message(arbitration_id=0x100, data=[0xAA])])
-    adapter = SocketCanAdapter(lambda configuration: bus)
+    adapter = listening(lambda configuration: bus)
     adapter.open(CaptureConfiguration(channel="can0"))
 
     frames = list(receive_frames(adapter))
 
     assert len(frames) == 1
     assert frames[0].data == b"\xAA"
+
+
+def test_slcan_backend_applies_bitrate_and_listen_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The whole point of this backend: what is declared is what reaches the device."""
+    calls: list[dict[str, object]] = []
+    def record(**kwargs: object) -> FakeBus:
+        calls.append(kwargs)
+        return FakeBus([])
+
+    monkeypatch.setattr(can, "Bus", record)
+    mode = FakeControllerMode(True)
+
+    adapter = PythonCanAdapter(controller_mode=mode)
+    adapter.open(
+        CaptureConfiguration(
+            channel="/dev/serial/by-id/usb-CANable",
+            bitrate=250_000,
+            interface=CanInterface.SLCAN,
+        )
+    )
+
+    assert calls == [
+        {
+            "interface": "slcan",
+            "channel": "/dev/serial/by-id/usb-CANable",
+            "bitrate": 250_000,
+            "listen_only": True,
+        }
+    ]
+    # Nothing to verify out of band: this backend sets the mode itself.
+    assert mode.channels == []
+    adapter.close()
+
+
+def test_socketcan_refuses_when_listen_only_is_not_confirmed() -> None:
+    created: list[object] = []
+
+    def factory(configuration: CaptureConfiguration) -> FakeBus:
+        created.append(configuration)
+        return FakeBus([])
+
+    for answer, expected in ((False, "not in listen-only"), (None, "could not be determined")):
+        adapter = PythonCanAdapter(factory, FakeControllerMode(answer))
+        with pytest.raises(ListenOnlyUnavailableError, match=expected):
+            adapter.open(CaptureConfiguration(channel="can0"))
+
+    # Fail closed: an unconfirmed channel is never opened, so it can never acknowledge.
+    assert created == []
+
+
+def test_ip_link_reports_mode_and_never_guesses(monkeypatch: pytest.MonkeyPatch) -> None:
+    reader = IpLinkControllerMode()
+
+    def completed(returncode: int, stdout: str) -> object:
+        return type("Completed", (), {"returncode": returncode, "stdout": stdout})()
+
+    def answer(returncode: int, stdout: str) -> None:
+        monkeypatch.setattr(
+            "can_sniffer.capture.subprocess.run",
+            lambda *args, **kwargs: completed(returncode, stdout),
+        )
+
+    monkeypatch.setattr("can_sniffer.capture.shutil.which", lambda name: "/usr/bin/ip")
+
+    answer(0, "can state ERROR-ACTIVE listen-only on")
+    assert reader.is_listen_only("can0") is True
+
+    answer(0, "can state ERROR-ACTIVE")
+    assert reader.is_listen_only("can0") is False
+
+    # Anything ambiguous must be None, which the adapter treats as a refusal.
+    answer(1, "")
+    assert reader.is_listen_only("can0") is None
+
+    def raise_oserror(*args: object, **kwargs: object) -> object:
+        raise OSError("ip vanished")
+
+    monkeypatch.setattr("can_sniffer.capture.subprocess.run", raise_oserror)
+    assert reader.is_listen_only("can0") is None
+
+    monkeypatch.setattr("can_sniffer.capture.shutil.which", lambda name: None)
+    assert reader.is_listen_only("can0") is None

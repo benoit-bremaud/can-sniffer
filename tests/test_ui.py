@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QApplication
 
 from can_sniffer.analysis import CapturedFrame, IdentifierStatistics, TemporalAnalyzer
 from can_sniffer.app import create_application, create_capture_window
-from can_sniffer.capture import CaptureConfiguration
+from can_sniffer.capture import CanInterface, CaptureConfiguration
 from can_sniffer.preferences import DisplayPreferences, IdentifierFormat
 from can_sniffer.protocol import (
     CanFrame,
@@ -685,3 +685,33 @@ def test_capture_and_replay_controls_cannot_transmit(qt_application: QApplicatio
     window.reset_replay()
 
     assert transmitter.requests == []
+
+
+def test_window_selects_backend_and_states_the_expected_channel_form(
+    qt_application: QApplication,
+) -> None:
+    """The two backends take different channel forms, so the UI must say which."""
+    del qt_application
+    controller = FakeController([])
+    window = create_test_window(controller)
+
+    assert window.selected_interface() is CanInterface.SOCKETCAN
+    assert window.channel_input.placeholderText() == "can0"
+    assert "ip link" in window.channel_input.toolTip()
+
+    slcan_index = window.interface_input.findData(CanInterface.SLCAN)
+    window.interface_input.setCurrentIndex(slcan_index)
+
+    assert window.selected_interface() is CanInterface.SLCAN
+    assert window.channel_input.placeholderText().startswith("/dev/serial/by-id/")
+    assert "listen-only" in window.channel_input.toolTip()
+
+    window.channel_input.setText("/dev/serial/by-id/usb-CANable")
+    window.start_capture()
+
+    # The chosen backend must reach the capture configuration, not just the widget.
+    assert controller.configurations == [
+        CaptureConfiguration(
+            channel="/dev/serial/by-id/usb-CANable", interface=CanInterface.SLCAN
+        )
+    ]

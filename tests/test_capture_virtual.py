@@ -1,12 +1,20 @@
 import can
 
-from can_sniffer.capture import CaptureConfiguration, SocketCanAdapter
+from can_sniffer.capture import CaptureConfiguration, PythonCanAdapter
 
 
-def test_socketcan_adapter_contract_with_python_can_virtual_backend() -> None:
+class ConfirmedListenOnly:
+    """Local double: this suite must never shell out to `ip`."""
+
+    def is_listen_only(self, channel: str) -> bool | None:
+        del channel
+        return True
+
+
+def test_adapter_contract_with_python_can_virtual_backend() -> None:
     receiver = can.Bus(interface="virtual", channel="can-sniffer-integration")
     sender = can.Bus(interface="virtual", channel="can-sniffer-integration")
-    adapter = SocketCanAdapter(lambda configuration: receiver)
+    adapter = PythonCanAdapter(lambda configuration: receiver, ConfirmedListenOnly())
 
     try:
         adapter.open(CaptureConfiguration(channel="vcan0"))
