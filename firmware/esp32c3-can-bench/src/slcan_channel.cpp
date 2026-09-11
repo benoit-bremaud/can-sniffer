@@ -59,11 +59,13 @@ uint8_t TwaiSlcanChannel::status() {
 
 bool TwaiSlcanChannel::poll(bench::SlcanFrame& frame) {
     twai_message_t message = {};
-    if (port_.receive(message) != TwaiPort::ReceiveResult::Frame) { return false; }
+    if (port_.receive(message, TwaiPort::DlcPolicy::Clamp) != TwaiPort::ReceiveResult::Frame) {
+        return false;
+    }
     frame.id = message.identifier;
     frame.extended = message.extd != 0;
     frame.rtr = message.rtr != 0;
-    frame.dlc = message.data_length_code > 8 ? 8 : message.data_length_code;
+    frame.dlc = message.data_length_code;  // already clamped at the boundary
     for (unsigned i = 0; i < frame.dlc; ++i) { frame.data[i] = message.data[i]; }
     return true;
 }

@@ -28,15 +28,19 @@ transmissions or acknowledgments) but can receive messages" — enforced by the 
 
 - L1: No transmit path exists. `t`, `T`, `r`, `R` and `x` are answered with BEL in every
   state, and no code in the profile submits a frame. This is what makes the image pointable
-  at a bus the operator does not own, unlike the generator profiles.
+  at a bus the operator does not own, unlike the generator profiles. `N`, the serial-number
+  query, is refused too: this adapter carries no serial number, and answering with a version
+  would be a wrong answer wearing the shape of a right one.
 - L2: `L` installs `TWAI_MODE_LISTEN_ONLY`; `O` installs `TWAI_MODE_NORMAL`, which
   acknowledges and exists for the two-node bench where nothing else would acknowledge the
   generator. The active mode is reported, never assumed.
 - L2b: A latched bus-off forbids reopening in normal mode, as it does for every transmitting
   profile, but not in listen-only: that mode cannot influence the bus, so refusing it would
   only strand the operator with no way to observe what went wrong, on a profile that
-  deliberately prints no diagnostic. The latch is dropped with the reopen and re-raised by
-  the next poll if the controller is still off the bus.
+  deliberately prints no diagnostic. The latch is dropped only once a listen-only start has
+  actually succeeded — a failed attempt must leave it standing, or the next normal-mode open
+  would slip through a guard the bus-off still holds shut — and is re-raised by the next poll
+  if the controller is still off the bus.
 - L3: Every command is answered — CR on success, BEL on refusal — including a bare
   terminator, which python-can writes on every `set_bitrate`. A silent adapter makes
   "applied" indistinguishable from "ignored", which is what made the CANable undiagnosable
@@ -55,6 +59,11 @@ transmissions or acknowledgments) but can receive messages" — enforced by the 
 - L6b: The receive queue holds 32 frames in listen-only mode. One slot suits the generator
   profiles, which keep a single frame in flight; a sniffer must absorb a burst between two
   loop iterations, and the driver silently counts what it drops.
+- L6c: A protocol line is written whole or not at all. Half a frame would be parsed by the
+  host as a different frame and half a reply as no reply, so a line the link cannot take is
+  refused and reported on LAWICEL bit 0, the receive-queue overrun — which is exactly what a
+  dropped frame line is. Draining stops at the first refusal rather than pulling frames out
+  of the driver only to discard them, which would hide the loss from its own counters.
 - L7: The profile writes protocol bytes and nothing else. No banner, no status line, no
   logger — any human-readable output would arrive inside the frame stream and be parsed by
   the host as traffic.
@@ -69,7 +78,9 @@ transmissions or acknowledgments) but can receive messages" — enforced by the 
 - L9: A start that fails releases the driver, so a later open cannot fail for a reason
   unrelated to the bus. `F` on a closed channel reports no flags rather than replaying the
   previous session's, since the driver snapshot deliberately survives cleanup. A frame with a non-compliant DLC is clamped to eight rather than
-  driving a read past the payload.
+  driving a read past the payload: ISO 11898-1 makes 9-15 legal, each meaning eight data
+  bytes, so a sniffer shows the frame where a generator treats it as a fault worth stopping
+  for. The policy travels with the call, leaving the generator profiles strict.
 
 ## Design
 

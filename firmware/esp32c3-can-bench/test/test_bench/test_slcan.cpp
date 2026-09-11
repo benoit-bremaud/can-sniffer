@@ -87,7 +87,9 @@ void parser_classifies_transmit_lines_distinctly_from_invalid_ones() {
 
 void parser_rejects_malformed_and_overlong_lines() {
     SlcanParser parser;
-    for (const char* line : {"Z\r", "CC\r", "OO\r", "LL\r", "FF\r", "VV\r"}) {
+    // N is the LAWICEL serial-number query, which this adapter does not carry: refusing
+    // says so, where a version string would be a wrong answer shaped like a right one.
+    for (const char* line : {"Z\r", "CC\r", "OO\r", "LL\r", "FF\r", "VV\r", "N\r"}) {
         TEST_ASSERT_EQUAL(static_cast<int>(SlcanCommand::Invalid),
                           static_cast<int>(feed_line(parser, line).command));
     }

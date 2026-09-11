@@ -75,8 +75,9 @@ SlcanRequest SlcanParser::interpret() const {
     case 'F':
         return make(size_ == 1 ? SlcanCommand::Status : SlcanCommand::Invalid);
     case 'V':
-    case 'N':
         return make(size_ == 1 ? SlcanCommand::Version : SlcanCommand::Invalid);
+    // 'N' is the serial-number query, which this adapter does not carry. Refusing says so;
+    // answering with a version would be a wrong answer wearing the shape of a right one.
     case 't':
     case 'T':
     case 'r':
@@ -167,7 +168,10 @@ SlcanReply SlcanSession::feed(char byte) {
         bitrate_ = request.bitrate;
         return reply(true);
     case SlcanCommand::Status: {
-        const uint8_t flags = port_.status();
+        // Cleared on read like every other counter flag, so the host sees the loss stop.
+        const uint8_t dropped = dropped_ ? 0x01 : 0x00;
+        dropped_ = false;
+        const uint8_t flags = static_cast<uint8_t>(port_.status() | dropped);
         out_[0] = 'F';
         out_[1] = hex_char(static_cast<uint8_t>(flags >> 4));
         out_[2] = hex_char(static_cast<uint8_t>(flags & 0x0Fu));

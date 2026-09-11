@@ -16,8 +16,12 @@ public:
     };
     const Diagnostics& diagnostics() const { return diagnostics_; }
     enum class ReceiveResult { Empty, Frame, Error };
+    /// What to do with a DLC above eight. ISO 11898-1 makes 9-15 legal, each meaning eight
+    /// data bytes, and ESP-IDF reports the raw value: a generator treats it as a fault worth
+    /// stopping for, a sniffer must show the frame rather than hide it.
+    enum class DlcPolicy { Reject, Clamp };
     /// Nonblocking Classical CAN read; output changes only for a validated frame.
-    ReceiveResult receive(twai_message_t& frame);
+    ReceiveResult receive(twai_message_t& frame, DlcPolicy policy = DlcPolicy::Reject);
     /// Whether the controller may influence the bus at all. Listen-only is enforced by the
     /// peripheral: the SDK defines it as no transmissions and no acknowledgments.
     enum class Mode { Normal, ListenOnly };

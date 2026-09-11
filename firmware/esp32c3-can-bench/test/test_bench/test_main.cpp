@@ -478,6 +478,22 @@ void slcan_channel_maps_counters_and_releases_a_failed_open() {
     TEST_ASSERT_FALSE(frame.extended);
     TEST_ASSERT_EQUAL(4, frame.dlc);
 
+    // ISO 11898-1 makes DLC 9-15 legal, each meaning eight bytes. A generator treats it as
+    // a fault worth stopping for; a sniffer must show the frame rather than hide it.
+    twai_message_t wide = {};
+    wide.identifier = 0x321;
+    wide.data_length_code = 15;
+    sdk.incoming.push_back(wide);
+    TEST_ASSERT_TRUE(reader.poll(frame));
+    TEST_ASSERT_EQUAL(8, frame.dlc);
+    twai_message_t rejected = {};
+    rejected.identifier = 0x321;
+    rejected.data_length_code = 15;
+    sdk.incoming.push_back(rejected);
+    twai_message_t raw = {};
+    TEST_ASSERT_EQUAL(static_cast<int>(TwaiPort::ReceiveResult::Error),
+                      static_cast<int>(fresh.receive(raw)));  // the default stays strict
+
     TEST_ASSERT_FALSE(reader.poll(frame));  // empty queue is not an error
     TEST_ASSERT_TRUE(reader.close());
     // A closed channel must not replay the flags of the session before it.
@@ -497,6 +513,17 @@ void listen_only_may_reopen_after_a_latched_bus_off() {
     sdk.state = TWAI_STATE_RUNNING;
 
     TEST_ASSERT_FALSE(port.start(Bitrate::K125));  // still forbidden for a transmitter
+
+    // A listen-only attempt that fails must leave the latch standing, or the next
+    // normal-mode open would slip through a guard the bus-off still holds shut.
+    port.configure(TwaiPort::Mode::ListenOnly);
+    sdk.start_result = ESP_FAIL;
+    TEST_ASSERT_FALSE(port.start(Bitrate::K125));
+    TEST_ASSERT_TRUE(port.stop());
+    sdk.start_result = ESP_OK;
+    port.configure(TwaiPort::Mode::Normal);
+    TEST_ASSERT_FALSE(port.start(Bitrate::K125));
+
     port.configure(TwaiPort::Mode::ListenOnly);
     TEST_ASSERT_TRUE(port.start(Bitrate::K125));
     TEST_ASSERT_EQUAL(TWAI_MODE_LISTEN_ONLY, sdk.general.mode);
@@ -771,6 +798,26 @@ void application_slcan_speaks_protocol_only() {
     loop();
     TEST_ASSERT_EQUAL_STRING("\a", Serial.output.c_str());
     TEST_ASSERT_EQUAL(0, sdk.transmits);
+
+    // A line the link cannot take whole is dropped whole. Half a frame would be parsed by
+    // the host as a different frame, and half a reply as no reply at all.
+    Serial.output.clear();
+    Serial.writable = 0;
+    Serial.send("V\r");
+    loop();
+    TEST_ASSERT_EQUAL_STRING("", Serial.output.c_str());
+    Serial.writable = 1024;
+
+    // The loss reaches the host through the status byte instead of vanishing, and clears
+    // on read like every other counter flag.
+    Serial.output.clear();
+    Serial.send("F\r");
+    loop();
+    TEST_ASSERT_EQUAL_STRING("F01\r", Serial.output.c_str());
+    Serial.output.clear();
+    Serial.send("F\r");
+    loop();
+    TEST_ASSERT_EQUAL_STRING("F00\r", Serial.output.c_str());
 
     Serial.output.clear();
     Serial.send("C\r");

@@ -40,7 +40,6 @@ bool TwaiPort::start(bench::Bitrate bitrate) {
     // the bus, so it is the one mode allowed to reopen after the latch, and the latch is
     // dropped with it: a later poll re-raises it if the controller is still off the bus.
     if (bus_off_ && mode_ != Mode::ListenOnly) { return false; }
-    bus_off_ = bus_off_ && mode_ != Mode::ListenOnly;
     twai_timing_config_t timing = {};
     if (!timing_for(bitrate, timing)) { return false; }
     diagnostics_ = Diagnostics{};
@@ -57,7 +56,12 @@ bool TwaiPort::start(bench::Bitrate bitrate) {
     const twai_filter_config_t filter = TWAI_FILTER_CONFIG_ACCEPT_ALL();
     if (twai_driver_install(&general, &timing, &filter) != ESP_OK) { return false; }
     installed_ = true;  // Keep ownership even if start fails so cleanup can retry.
-    return twai_start() == ESP_OK;
+    if (twai_start() != ESP_OK) { return false; }
+    // Only now, and only for a mode that cannot influence the bus: a listen-only attempt
+    // that failed must leave the latch standing, or the next normal-mode open would slip
+    // through a guard the bus-off is still supposed to hold shut.
+    if (mode_ == Mode::ListenOnly) { bus_off_ = false; }
+    return true;
 }
 
 bool TwaiPort::submit(const bench::Frame& frame) {
@@ -99,13 +103,17 @@ bench::Result TwaiPort::poll() {
     return result;
 }
 
-TwaiPort::ReceiveResult TwaiPort::receive(twai_message_t& frame) {
+TwaiPort::ReceiveResult TwaiPort::receive(twai_message_t& frame, DlcPolicy policy) {
     if (!installed_ || bus_off_) { return ReceiveResult::Error; }
     twai_message_t next = {};
     const auto error = twai_receive(&next, 0);
     if (error == ESP_ERR_TIMEOUT) { return ReceiveResult::Empty; }
-    if (error != ESP_OK || next.data_length_code > 8 ||
+    if (error != ESP_OK ||
         next.identifier > (next.extd ? 0x1FFFFFFFu : 0x7FFu)) { return ReceiveResult::Error; }
+    if (next.data_length_code > 8) {
+        if (policy == DlcPolicy::Reject) { return ReceiveResult::Error; }
+        next.data_length_code = 8;
+    }
     frame = next;
     return ReceiveResult::Frame;
 }

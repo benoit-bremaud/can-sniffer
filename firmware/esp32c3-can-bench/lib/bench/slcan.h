@@ -97,6 +97,10 @@ public:
     SlcanReply frame(const SlcanFrame& frame);
     /// Drop a partial line, for a link reset.
     void reset();
+    /// Record that a line could not be written whole. LAWICEL bit 0 is the receive-queue
+    /// overrun, which is precisely what a dropped frame line is, so the loss reaches the
+    /// host through the protocol instead of vanishing.
+    void note_dropped_line() { dropped_ = true; }
     bool is_open() const { return open_; }
     Bitrate bitrate() const { return bitrate_; }
 
@@ -107,6 +111,7 @@ private:
     char out_[kSlcanFrameChars] = {};
     Bitrate bitrate_ = Bitrate::K125;
     bool open_ = false;
+    bool dropped_ = false;
 };
 
 /// Build the LAWICEL status byte from controller counters: bit 3 data overrun, bit 5

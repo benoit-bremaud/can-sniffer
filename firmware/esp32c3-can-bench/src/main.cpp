@@ -47,6 +47,20 @@ TwaiSlcanChannel channel(can);
 bench::SlcanSession session(channel);
 constexpr unsigned kReceiveBudget = 16;
 bool slcan_connected = false;
+/// A protocol line is written whole or not at all: half a frame would be parsed by the host
+/// as a different frame, and half a reply as no reply. A line the link cannot take is
+/// reported through the status byte rather than dropped in silence.
+bool write_line(const bench::SlcanReply& line) {
+    if (line.length == 0) { return true; }
+    if (!Serial || Serial.availableForWrite() < static_cast<int>(line.length)) {
+        session.note_dropped_line();
+        return false;
+    }
+    const std::size_t written =
+        Serial.write(reinterpret_cast<const uint8_t*>(line.text), line.length);
+    if (written != line.length) { session.note_dropped_line(); return false; }
+    return true;
+}
 #else
 bench::BenchController controller(can);
 #endif
@@ -283,18 +297,14 @@ void loop() {
     for (unsigned i = 0; i < kInputBudget && Serial.available() > 0; ++i) {
         const int byte = Serial.read();
         if (byte < 0) { break; }
-        const bench::SlcanReply answer = session.feed(static_cast<char>(byte));
-        if (answer.length > 0) {
-            Serial.write(reinterpret_cast<const uint8_t*>(answer.text), answer.length);
-        }
+        write_line(session.feed(static_cast<char>(byte)));
     }
     if (session.is_open()) {
         bench::SlcanFrame frame;
+        // Stop draining as soon as the link refuses a line: continuing would read frames
+        // out of the driver only to discard them, hiding the loss from its own counters.
         for (unsigned i = 0; i < kReceiveBudget && channel.poll(frame); ++i) {
-            const bench::SlcanReply line = session.frame(frame);
-            if (line.length > 0) {
-                Serial.write(reinterpret_cast<const uint8_t*>(line.text), line.length);
-            }
+            if (!write_line(session.frame(frame))) { break; }
         }
     }
     delay(1);
