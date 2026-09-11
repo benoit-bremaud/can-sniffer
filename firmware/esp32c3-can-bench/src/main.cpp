@@ -82,8 +82,12 @@ void received_line() {
     if (!receiver.has_frame()) { log_line("last_frame=none\n"); return; }
     const auto& frame = receiver.last_frame();
     char payload[25] = {};
+    static_assert(sizeof(payload) >= 8 * 3 + 1, "eight bytes as \"%02X \" plus NUL");
     if (!frame.rtr) {
-        for (unsigned i = 0; i < frame.data_length_code; ++i) {
+        // Bound here, not only at the SDK boundary: ESP-IDF reports DLC 9-15 verbatim, and
+        // sizeof(payload) - i * 3 is unsigned, so i >= 9 would wrap and unbound the write.
+        const unsigned length = frame.data_length_code > 8 ? 8u : frame.data_length_code;
+        for (unsigned i = 0; i < length; ++i) {
             std::snprintf(payload + i * 3, sizeof(payload) - i * 3, "%02X ", frame.data[i]);
         }
     }
