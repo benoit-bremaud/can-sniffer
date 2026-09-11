@@ -7,6 +7,7 @@
 
 #include "twai_port.h"
 #include "bench_receiver.h"
+#include "slcan_channel.h"
 
 #ifndef BENCH_AUTONOMOUS
 #define BENCH_AUTONOMOUS 0
@@ -20,8 +21,16 @@
 #ifndef BENCH_NO_ACK
 #define BENCH_NO_ACK 0
 #endif
-#if (BENCH_AUTONOMOUS + BENCH_BUTTONS + BENCH_RECEIVER) > 1
+#ifndef BENCH_SLCAN
+#define BENCH_SLCAN 0
+#endif
+#if (BENCH_AUTONOMOUS + BENCH_BUTTONS + BENCH_RECEIVER + BENCH_SLCAN) > 1
 #error "Select only one bench profile"
+#endif
+#if BENCH_NO_ACK && BENCH_SLCAN
+// NO_ACK fabricates acknowledgements on the bus, which is the opposite of what a
+// receive-only sniffer promises.
+#error "BENCH_NO_ACK must not be combined with the slcan profile"
 #endif
 #if BENCH_NO_ACK && BENCH_AUTONOMOUS
 // That image would emit after every boot, report fabricated success and need no USB host,
@@ -33,6 +42,25 @@ namespace {
 TwaiPort can;
 #if BENCH_RECEIVER
 BenchReceiver receiver(can);
+#elif BENCH_SLCAN
+TwaiSlcanChannel channel(can);
+bench::SlcanSession session(channel);
+constexpr unsigned kReceiveBudget = 16;
+bool slcan_connected = false;
+/// A protocol line is written whole or not at all: half a frame would be parsed by the host
+/// as a different frame, and half a reply as no reply. A line the link cannot take is
+/// reported through the status byte rather than dropped in silence.
+bool write_line(const bench::SlcanReply& line) {
+    if (line.length == 0) { return true; }
+    if (!Serial || Serial.availableForWrite() < static_cast<int>(line.length)) {
+        session.note_dropped_line();
+        return false;
+    }
+    const std::size_t written =
+        Serial.write(reinterpret_cast<const uint8_t*>(line.text), line.length);
+    if (written != line.length) { session.note_dropped_line(); return false; }
+    return true;
+}
 #else
 bench::BenchController controller(can);
 #endif
@@ -43,7 +71,7 @@ bench::BurstRunner burst(controller);
 bench::ButtonTestRunner buttons(controller);
 #endif
 bench::CommandParser parser;
-#if !BENCH_RECEIVER
+#if !BENCH_RECEIVER && !BENCH_SLCAN
 bench::ActivityPulse led;
 uint32_t led_succeeded = 0;
 #if BENCH_NO_ACK
@@ -51,11 +79,18 @@ uint32_t led_succeeded = 0;
 constexpr uint32_t kSelfTestStutterMs = 30;
 #endif
 #endif
+#if !BENCH_SLCAN
+// USB presence gates emission in the transmitting profiles; the sniffer has no emission to
+// gate and no log to drop, so neither exists there.
 bool connected = false;
 uint32_t dropped_logs = 0;
+#endif
 constexpr unsigned kInputBudget = 64;
 constexpr unsigned kRxBufferSize = 256;
 
+#if !BENCH_SLCAN
+// The slcan profile uses none of this: it speaks only protocol, so a logger, a banner and a
+// command handler would be dead weight with a live risk of writing into the frame stream.
 void log_line(const char* text) {
     const std::size_t size = std::strlen(text);
     // Do not block control processing behind a slow/disconnected USB reader.
@@ -147,7 +182,7 @@ void status_line() {
     diagnostic_lines();
 }
 
-#if !BENCH_RECEIVER
+#if !BENCH_RECEIVER && !BENCH_SLCAN
 // One call per loop covers every emission path, including the USB-less autonomous one.
 void service_led(uint32_t now) {
     const uint32_t succeeded = controller.status().succeeded;
@@ -225,13 +260,14 @@ void handle(bench::Command command, uint32_t now) {
 #endif
     status_line();
 }
+#endif
 }  // namespace
 
 void setup() {
     // Recessive TX level before enabling the driver. This is not a power-up interlock.
     digitalWrite(bench::kTxPin, HIGH);
     pinMode(bench::kTxPin, OUTPUT);
-#if !BENCH_RECEIVER
+#if !BENCH_RECEIVER && !BENCH_SLCAN
     // Active low: HIGH is off. Driven only here, after boot released the strapping pin.
     digitalWrite(bench::kLedPin, HIGH);
     pinMode(bench::kLedPin, OUTPUT);
@@ -248,7 +284,31 @@ void setup() {
 }
 
 void loop() {
-#if BENCH_RECEIVER
+#if BENCH_SLCAN
+    // Protocol only. A banner or a status line would reach the host inside the same stream
+    // and be parsed as traffic, so this profile never writes a human-readable byte.
+    const bool present = static_cast<bool>(Serial);
+    if (present != slcan_connected) {
+        // A host that vanished mid-line must not leave its fragment to be joined onto the
+        // next host's first command.
+        session.reset();
+        slcan_connected = present;
+    }
+    for (unsigned i = 0; i < kInputBudget && Serial.available() > 0; ++i) {
+        const int byte = Serial.read();
+        if (byte < 0) { break; }
+        write_line(session.feed(static_cast<char>(byte)));
+    }
+    if (session.is_open()) {
+        bench::SlcanFrame frame;
+        // Stop draining as soon as the link refuses a line: continuing would read frames
+        // out of the driver only to discard them, hiding the loss from its own counters.
+        for (unsigned i = 0; i < kReceiveBudget && channel.poll(frame); ++i) {
+            if (!write_line(session.frame(frame))) { break; }
+        }
+    }
+    delay(1);
+#elif BENCH_RECEIVER
     const auto before = receiver.state();
     const bool present = static_cast<bool>(Serial);
     if (present != connected || !present) {

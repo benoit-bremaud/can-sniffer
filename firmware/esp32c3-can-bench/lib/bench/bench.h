@@ -13,7 +13,18 @@ constexpr int kLedPin = 8;
 constexpr uint32_t kPeriodMs = 1000;
 constexpr uint32_t kCompletionMs = 250;
 constexpr std::size_t kCommandLimit = 32;
-enum class Bitrate : uint32_t { K125 = 125000, K250 = 250000 };
+/// Rates the ESP32 TWAI controller can produce, each backed by an SDK timing config.
+enum class Bitrate : uint32_t {
+    K10 = 10000,
+    K20 = 20000,
+    K50 = 50000,
+    K100 = 100000,
+    K125 = 125000,
+    K250 = 250000,
+    K500 = 500000,
+    K800 = 800000,
+    M1 = 1000000,
+};
 
 struct Frame {
     uint32_t id = 0x001ABCDE;

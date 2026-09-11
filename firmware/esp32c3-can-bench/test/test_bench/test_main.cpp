@@ -3,6 +3,7 @@
 #include <bench.h>
 #include <fake_sdk.h>
 #include "twai_port.h"
+#include "slcan_channel.h"
 
 #include <cstring>
 #include <string>
@@ -370,6 +371,170 @@ void adapter_uses_real_contract_fields() {
     TEST_ASSERT_TRUE(port.stop()); TEST_ASSERT_FALSE(sdk.installed);
 }
 
+void adapter_selects_mode_and_timing_per_bitrate() {
+    // Listen-only is the property the sniffer profile rests on, so assert the mode that
+    // actually reaches the driver rather than the one we intended to request.
+    TwaiPort port;
+    port.configure(TwaiPort::Mode::ListenOnly);
+    TEST_ASSERT_TRUE(port.start(Bitrate::K500));
+    TEST_ASSERT_EQUAL(TWAI_MODE_LISTEN_ONLY, sdk.general.mode);
+    TEST_ASSERT_TRUE(port.stop());
+
+    // Every rate reaches its own timing config; recovering it arithmetically catches a
+    // table that compiles but points two rates at the same configuration.
+    const struct { Bitrate bitrate; uint32_t hertz; } rates[] = {
+        {Bitrate::K10, 10000},   {Bitrate::K20, 20000},   {Bitrate::K50, 50000},
+        {Bitrate::K100, 100000}, {Bitrate::K125, 125000}, {Bitrate::K250, 250000},
+        {Bitrate::K500, 500000}, {Bitrate::K800, 800000}, {Bitrate::M1, 1000000},
+    };
+    for (const auto& entry : rates) {
+        TwaiPort each;
+        TEST_ASSERT_TRUE(each.start(entry.bitrate));
+        TEST_ASSERT_EQUAL(kExpectedTwaiMode, sdk.general.mode);
+        TEST_ASSERT_EQUAL_UINT32(
+            entry.hertz,
+            80000000u / (sdk.timing.brp * (1u + sdk.timing.tseg_1 + sdk.timing.tseg_2)));
+        TEST_ASSERT_TRUE(each.stop());
+    }
+
+    // A value outside the enum is refused rather than defaulted: silently selecting another
+    // rate is the defect this firmware exists to avoid.
+    TwaiPort invalid;
+    const int installs_before = sdk.installs;
+    TEST_ASSERT_FALSE(invalid.start(static_cast<Bitrate>(42)));
+    TEST_ASSERT_EQUAL(installs_before, sdk.installs);  // refused before the driver is installed
+}
+
+void slcan_channel_maps_counters_and_releases_a_failed_open() {
+    TwaiPort port;
+    TwaiSlcanChannel channel(port);
+
+    // A start that fails must not leave the driver installed: the next open would then fail
+    // for a reason that has nothing to do with the bus.
+    sdk.start_result = ESP_FAIL;
+    TEST_ASSERT_FALSE(channel.open(Bitrate::K125, true));
+    TEST_ASSERT_FALSE(sdk.installed);
+    sdk.start_result = ESP_OK;
+
+    TEST_ASSERT_TRUE(channel.open(Bitrate::K125, true));
+    TEST_ASSERT_EQUAL(TWAI_MODE_LISTEN_ONLY, sdk.general.mode);
+
+    // Nothing readable yields no flags rather than invented ones.
+    sdk.status_result = ESP_FAIL;
+    TEST_ASSERT_EQUAL_HEX8(0x00, channel.status());
+    sdk.status_result = ESP_OK;
+
+    sdk.counters = {TWAI_STATE_RUNNING, 0, 0, 0, 0, 3, 0, 0};
+    TEST_ASSERT_EQUAL_HEX8(0x08, channel.status());          // rx overrun
+    // Counter flags describe what happened since the last read: a fault that stopped is a
+    // fault the host must be able to see stop, or the byte is useless as a diagnostic.
+    TEST_ASSERT_EQUAL_HEX8(0x00, channel.status());
+    sdk.counters = {TWAI_STATE_RUNNING, 0, 0, 0, 2, 3, 0, 0};
+    TEST_ASSERT_EQUAL_HEX8(0x08, channel.status());          // frames the queue missed
+    sdk.counters = {TWAI_STATE_RUNNING, 128, 0, 0, 0, 0, 0, 0};
+    TEST_ASSERT_EQUAL_HEX8(0x20, channel.status());          // error passive by TX counter
+    sdk.counters = {TWAI_STATE_RUNNING, 0, 200, 0, 0, 0, 0, 0};
+    TEST_ASSERT_EQUAL_HEX8(0x20, channel.status());          // and by RX counter
+    sdk.counters = {TWAI_STATE_RUNNING, 0, 0, 0, 0, 0, 2, 0};
+    TEST_ASSERT_EQUAL_HEX8(0x40, channel.status());          // arbitration lost
+    sdk.counters = {TWAI_STATE_RUNNING, 0, 0, 0, 0, 0, 2, 1};
+    TEST_ASSERT_EQUAL_HEX8(0x80, channel.status());          // bus error, arbitration settled
+    // A state flag, by contrast, describes the controller now and persists while it lasts.
+    sdk.counters = {};
+    sdk.state = TWAI_STATE_BUS_OFF;
+    TEST_ASSERT_EQUAL_HEX8(0x80, channel.status());
+    TEST_ASSERT_EQUAL_HEX8(0x80, channel.status());
+    sdk.state = TWAI_STATE_RUNNING;
+    TEST_ASSERT_EQUAL_HEX8(0x00, channel.status());
+
+    // A frame crosses the boundary intact, and a non-compliant DLC is clamped rather than
+    // allowed to drive a read past eight bytes.
+    TwaiPort fresh;
+    TwaiSlcanChannel reader(fresh);
+    TEST_ASSERT_TRUE(reader.open(Bitrate::K125, false));
+    twai_message_t incoming = {};
+    incoming.identifier = 0x1ABCDE;
+    incoming.extd = 1;
+    incoming.data_length_code = 8;
+    for (unsigned i = 0; i < 8; ++i) { incoming.data[i] = static_cast<uint8_t>(0xA0 + i); }
+    sdk.incoming.push_back(incoming);
+    bench::SlcanFrame frame;
+    TEST_ASSERT_TRUE(reader.poll(frame));
+    TEST_ASSERT_EQUAL_HEX32(0x1ABCDE, frame.id);
+    TEST_ASSERT_TRUE(frame.extended);
+    TEST_ASSERT_EQUAL(8, frame.dlc);
+    TEST_ASSERT_EQUAL_HEX8(0xA7, frame.data[7]);
+    TEST_ASSERT_FALSE(frame.rtr);
+
+    // A remote frame crosses as a remote frame: rendering it as data would put eight bytes
+    // of stale payload into the stream the host parses.
+    twai_message_t remote = {};
+    remote.identifier = 0x123;
+    remote.rtr = 1;
+    remote.data_length_code = 4;
+    sdk.incoming.push_back(remote);
+    TEST_ASSERT_TRUE(reader.poll(frame));
+    TEST_ASSERT_TRUE(frame.rtr);
+    TEST_ASSERT_FALSE(frame.extended);
+    TEST_ASSERT_EQUAL(4, frame.dlc);
+
+    // ISO 11898-1 makes DLC 9-15 legal, each meaning eight bytes. A generator treats it as
+    // a fault worth stopping for; a sniffer must show the frame rather than hide it.
+    twai_message_t wide = {};
+    wide.identifier = 0x321;
+    wide.data_length_code = 15;
+    sdk.incoming.push_back(wide);
+    TEST_ASSERT_TRUE(reader.poll(frame));
+    TEST_ASSERT_EQUAL(8, frame.dlc);
+    twai_message_t rejected = {};
+    rejected.identifier = 0x321;
+    rejected.data_length_code = 15;
+    sdk.incoming.push_back(rejected);
+    twai_message_t raw = {};
+    TEST_ASSERT_EQUAL(static_cast<int>(TwaiPort::ReceiveResult::Error),
+                      static_cast<int>(fresh.receive(raw)));  // the default stays strict
+
+    TEST_ASSERT_FALSE(reader.poll(frame));  // empty queue is not an error
+    TEST_ASSERT_TRUE(reader.close());
+    // A closed channel must not replay the flags of the session before it.
+    sdk.counters = {TWAI_STATE_RUNNING, 0, 0, 0, 0, 0, 0, 9};
+    TEST_ASSERT_EQUAL_HEX8(0x00, reader.status());
+}
+
+void listen_only_may_reopen_after_a_latched_bus_off() {
+    // The latch forbids emitting again on a broken bus. Listen-only cannot influence it at
+    // all, so refusing the reopen would only strand the operator with no way to observe
+    // what went wrong - on a profile that deliberately prints no diagnostic.
+    TwaiPort port;
+    TEST_ASSERT_TRUE(port.start(Bitrate::K125));
+    sdk.state = TWAI_STATE_BUS_OFF;
+    port.poll();
+    TEST_ASSERT_TRUE(port.stop());
+    sdk.state = TWAI_STATE_RUNNING;
+
+    TEST_ASSERT_FALSE(port.start(Bitrate::K125));  // still forbidden for a transmitter
+
+    // A listen-only attempt that fails must leave the latch standing, or the next
+    // normal-mode open would slip through a guard the bus-off still holds shut.
+    port.configure(TwaiPort::Mode::ListenOnly);
+    sdk.start_result = ESP_FAIL;
+    TEST_ASSERT_FALSE(port.start(Bitrate::K125));
+    TEST_ASSERT_TRUE(port.stop());
+    sdk.start_result = ESP_OK;
+    port.configure(TwaiPort::Mode::Normal);
+    TEST_ASSERT_FALSE(port.start(Bitrate::K125));
+
+    port.configure(TwaiPort::Mode::ListenOnly);
+    TEST_ASSERT_TRUE(port.start(Bitrate::K125));
+    TEST_ASSERT_EQUAL(TWAI_MODE_LISTEN_ONLY, sdk.general.mode);
+    TEST_ASSERT_TRUE(port.stop());
+
+    // Dropping the latch is not forgetting: a controller still off the bus re-raises it.
+    port.configure(TwaiPort::Mode::Normal);
+    TEST_ASSERT_TRUE(port.start(Bitrate::K125));
+    TEST_ASSERT_TRUE(port.stop());
+}
+
 void adapter_install_and_start_errors() {
     TwaiPort port;
     sdk.install_result = ESP_FAIL; TEST_ASSERT_FALSE(port.start());
@@ -484,10 +649,14 @@ void diagnostics_mark_failed_reads_unavailable() {
     TEST_ASSERT_TRUE(port.stop());
 }
 
+#if !BENCH_SLCAN
+// The sniffer profile answers in protocol bytes, so it asserts exact replies rather than
+// searching a human-readable log.
 void usb_command(const std::string& command) { Serial.send(command); loop(); }
 void output_contains(const char* needle) {
     TEST_ASSERT_NOT_EQUAL(std::string::npos, Serial.output.find(needle));
 }
+#endif
 
 #if BENCH_RECEIVER
 void application_receiver_never_transmits() {
@@ -584,6 +753,79 @@ void application_buttons_without_usb() {
     sdk.levels[1] = HIGH; sdk.levels[5] = LOW; sdk.now += 1000; loop();
     TEST_ASSERT_EQUAL(2, sdk.starts);
 }
+#elif BENCH_SLCAN
+void application_slcan_speaks_protocol_only() {
+    // Exercises the real setup()/loop() with only the SDK doubled, which is the only place
+    // the protocol, the driver and the serial link meet.
+    setup();
+    Serial.connected = true;
+    loop();
+    // Silent until spoken to: a banner here would land inside the frame stream and the host
+    // would parse it as traffic.
+    TEST_ASSERT_EQUAL_STRING("", Serial.output.c_str());
+    TEST_ASSERT_EQUAL(0, sdk.installs);
+
+    Serial.output.clear();
+    Serial.send("S5\r");
+    loop();
+    TEST_ASSERT_EQUAL_STRING("\r", Serial.output.c_str());
+    TEST_ASSERT_EQUAL(0, sdk.installs);  // the bitrate is stored, the channel stays closed
+
+    Serial.output.clear();
+    Serial.send("L\r");
+    loop();
+    TEST_ASSERT_EQUAL_STRING("\r", Serial.output.c_str());
+    TEST_ASSERT_EQUAL(1, sdk.starts);
+    TEST_ASSERT_EQUAL(TWAI_MODE_LISTEN_ONLY, sdk.general.mode);
+    // Expressed as the rate, not as the divisor, which belongs to the SDK's table.
+    TEST_ASSERT_EQUAL_UINT32(250000u,
+        80000000u / (sdk.timing.brp * (1u + sdk.timing.tseg_1 + sdk.timing.tseg_2)));
+
+    // A received frame is rendered exactly as the host parses it.
+    twai_message_t incoming = {};
+    incoming.identifier = 0x001ABCDE;
+    incoming.extd = 1;
+    incoming.data_length_code = 8;
+    for (unsigned i = 0; i < 8; ++i) { incoming.data[i] = static_cast<uint8_t>(i + 1); }
+    sdk.incoming.push_back(incoming);
+    Serial.output.clear();
+    loop();
+    TEST_ASSERT_EQUAL_STRING("T001ABCDE80102030405060708\r", Serial.output.c_str());
+
+    // Every transmit request is refused, and nothing ever reaches the driver.
+    Serial.output.clear();
+    Serial.send("T001ABCDE80102030405060708\r");
+    loop();
+    TEST_ASSERT_EQUAL_STRING("\a", Serial.output.c_str());
+    TEST_ASSERT_EQUAL(0, sdk.transmits);
+
+    // A line the link cannot take whole is dropped whole. Half a frame would be parsed by
+    // the host as a different frame, and half a reply as no reply at all.
+    Serial.output.clear();
+    Serial.writable = 0;
+    Serial.send("V\r");
+    loop();
+    TEST_ASSERT_EQUAL_STRING("", Serial.output.c_str());
+    Serial.writable = 1024;
+
+    // The loss reaches the host through the status byte instead of vanishing, and clears
+    // on read like every other counter flag.
+    Serial.output.clear();
+    Serial.send("F\r");
+    loop();
+    TEST_ASSERT_EQUAL_STRING("F01\r", Serial.output.c_str());
+    Serial.output.clear();
+    Serial.send("F\r");
+    loop();
+    TEST_ASSERT_EQUAL_STRING("F00\r", Serial.output.c_str());
+
+    Serial.output.clear();
+    Serial.send("C\r");
+    loop();
+    TEST_ASSERT_EQUAL_STRING("\r", Serial.output.c_str());
+    TEST_ASSERT_FALSE(sdk.installed);
+    TEST_ASSERT_EQUAL(0, sdk.transmits);
+}
 #elif !BENCH_AUTONOMOUS
 void application_usb_lifecycle_and_faults() {
     // Exercise the actual setup()/loop() and adapters; only the SDK is replaced.
@@ -678,6 +920,7 @@ void tearDown() {}
 extern "C" void __gcov_dump();
 void run_button_tests();
 void run_receiver_tests();
+void run_slcan_tests();
 
 int main() {
     UNITY_BEGIN();
@@ -705,6 +948,9 @@ int main() {
     RUN_TEST(autonomous_errors_never_rearm);
     RUN_TEST(autonomous_final_completion_and_cleanup_failures);
     RUN_TEST(adapter_uses_real_contract_fields);
+    RUN_TEST(adapter_selects_mode_and_timing_per_bitrate);
+    RUN_TEST(slcan_channel_maps_counters_and_releases_a_failed_open);
+    RUN_TEST(listen_only_may_reopen_after_a_latched_bus_off);
     RUN_TEST(adapter_install_and_start_errors);
     RUN_TEST(adapter_polls_alerts_and_status);
     RUN_TEST(adapter_bus_off_between_poll_and_stop);
@@ -715,12 +961,15 @@ int main() {
     RUN_TEST(diagnostics_mark_failed_reads_unavailable);
     run_button_tests();
     run_receiver_tests();
+    run_slcan_tests();
 #if BENCH_RECEIVER
     RUN_TEST(application_receiver_never_transmits);
 #elif BENCH_BUTTONS
     RUN_TEST(application_buttons_without_usb);
 #elif BENCH_AUTONOMOUS
     RUN_TEST(application_autonomous_without_usb);
+#elif BENCH_SLCAN
+    RUN_TEST(application_slcan_speaks_protocol_only);
 #else
     RUN_TEST(application_usb_lifecycle_and_faults);
 #endif

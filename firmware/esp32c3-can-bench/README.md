@@ -188,6 +188,49 @@ Build/test all four profiles before publication. The previous firmware still gov
 until flashing succeeds; an existing autonomous image can transmit on reset. Disconnect CAN
 before powering for upload, then reconnect the isolated bench with power removed.
 
+## Sniffer profile (slcan, receive only)
+
+`esp32c3-slcan` turns the board into a CAN adapter that speaks the LAWICEL slcan protocol
+over its USB CDC link, so `can-sniffer` reaches it through the application's slcan backend
+with no change. It is the only profile meant to face a bus the operator does not own.
+
+Two properties make that acceptable, and both are enforced rather than promised:
+
+- **It cannot transmit.** `t`, `T`, `r`, `R` and `x` are answered with BEL in every state and
+  no code in the profile submits a frame.
+- **`L` is a controller mode**, `TWAI_MODE_LISTEN_ONLY`, which the SDK defines as making no
+  transmissions and no acknowledgments. `O` opens in normal mode, which does acknowledge, and
+  exists for the two-node bench where nothing else would acknowledge the generator.
+
+Every command is answered — CR accepted, BEL refused — so "applied" is never confused with
+"ignored". The profile writes protocol bytes and nothing else: opening a serial monitor shows
+silence until you type a command, because a banner would arrive inside the frame stream and
+the host would parse it as traffic.
+
+| Command | Answer |
+| --- | --- |
+| `S0`-`S6`, `S8` | CR — 10k, 20k, 50k, 100k, 125k, 250k, 500k, 1M |
+| `S7`, `S9` | BEL — 83.3k is absent from the SDK, and S7 means 800k to LAWICEL but 750k to python-can |
+| `S<n>` while open | BEL — the controller cannot retime a running channel |
+| `O` / `L` | CR — normal / listen-only |
+| `O` / `L` while open | BEL — close first |
+| `C` | CR, including on an already closed channel |
+| `F` | `F<hh>` — overrun, error-passive, arbitration lost, bus error, bus-off |
+| `V` | `V0100` |
+| `t` `T` `r` `R` `x` | BEL, always |
+
+```bash
+.venv/bin/pio test -e native-slcan
+.venv/bin/pio run -e esp32c3-slcan
+# Only after identifying the ESP32 and physically disconnecting CAN:
+.venv/bin/pio run -e esp32c3-slcan -t upload --upload-port /dev/serial/by-id/ESP32_DEVICE
+```
+
+The link carries text: an extended frame costs 27 characters. That is comfortable at bench
+cadence, but a saturated bus will outrun it and slcan reports neither the loss nor any bus
+error — `F` is polled, never pushed. For exhaustive capture and real error frames, use an
+adapter exposing a native CAN interface.
+
 ## No-ACK self-test (diagnostic only, never an acceptance test)
 
 `esp32c3-buttons-noack` is the three-button image built with `TWAI_MODE_NO_ACK`. The
