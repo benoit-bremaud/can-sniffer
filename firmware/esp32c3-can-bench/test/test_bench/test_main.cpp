@@ -426,7 +426,10 @@ void slcan_channel_maps_counters_and_releases_a_failed_open() {
 
     sdk.counters = {TWAI_STATE_RUNNING, 0, 0, 0, 0, 3, 0, 0};
     TEST_ASSERT_EQUAL_HEX8(0x08, channel.status());          // rx overrun
-    sdk.counters = {TWAI_STATE_RUNNING, 0, 0, 0, 2, 0, 0, 0};
+    // Counter flags describe what happened since the last read: a fault that stopped is a
+    // fault the host must be able to see stop, or the byte is useless as a diagnostic.
+    TEST_ASSERT_EQUAL_HEX8(0x00, channel.status());
+    sdk.counters = {TWAI_STATE_RUNNING, 0, 0, 0, 2, 3, 0, 0};
     TEST_ASSERT_EQUAL_HEX8(0x08, channel.status());          // frames the queue missed
     sdk.counters = {TWAI_STATE_RUNNING, 128, 0, 0, 0, 0, 0, 0};
     TEST_ASSERT_EQUAL_HEX8(0x20, channel.status());          // error passive by TX counter
@@ -434,12 +437,15 @@ void slcan_channel_maps_counters_and_releases_a_failed_open() {
     TEST_ASSERT_EQUAL_HEX8(0x20, channel.status());          // and by RX counter
     sdk.counters = {TWAI_STATE_RUNNING, 0, 0, 0, 0, 0, 2, 0};
     TEST_ASSERT_EQUAL_HEX8(0x40, channel.status());          // arbitration lost
-    sdk.counters = {TWAI_STATE_RUNNING, 0, 0, 0, 0, 0, 0, 1};
-    TEST_ASSERT_EQUAL_HEX8(0x80, channel.status());          // bus error
+    sdk.counters = {TWAI_STATE_RUNNING, 0, 0, 0, 0, 0, 2, 1};
+    TEST_ASSERT_EQUAL_HEX8(0x80, channel.status());          // bus error, arbitration settled
+    // A state flag, by contrast, describes the controller now and persists while it lasts.
     sdk.counters = {};
     sdk.state = TWAI_STATE_BUS_OFF;
     TEST_ASSERT_EQUAL_HEX8(0x80, channel.status());
+    TEST_ASSERT_EQUAL_HEX8(0x80, channel.status());
     sdk.state = TWAI_STATE_RUNNING;
+    TEST_ASSERT_EQUAL_HEX8(0x00, channel.status());
 
     // A frame crosses the boundary intact, and a non-compliant DLC is clamped rather than
     // allowed to drive a read past eight bytes.
@@ -477,6 +483,29 @@ void slcan_channel_maps_counters_and_releases_a_failed_open() {
     // A closed channel must not replay the flags of the session before it.
     sdk.counters = {TWAI_STATE_RUNNING, 0, 0, 0, 0, 0, 0, 9};
     TEST_ASSERT_EQUAL_HEX8(0x00, reader.status());
+}
+
+void listen_only_may_reopen_after_a_latched_bus_off() {
+    // The latch forbids emitting again on a broken bus. Listen-only cannot influence it at
+    // all, so refusing the reopen would only strand the operator with no way to observe
+    // what went wrong - on a profile that deliberately prints no diagnostic.
+    TwaiPort port;
+    TEST_ASSERT_TRUE(port.start(Bitrate::K125));
+    sdk.state = TWAI_STATE_BUS_OFF;
+    port.poll();
+    TEST_ASSERT_TRUE(port.stop());
+    sdk.state = TWAI_STATE_RUNNING;
+
+    TEST_ASSERT_FALSE(port.start(Bitrate::K125));  // still forbidden for a transmitter
+    port.configure(TwaiPort::Mode::ListenOnly);
+    TEST_ASSERT_TRUE(port.start(Bitrate::K125));
+    TEST_ASSERT_EQUAL(TWAI_MODE_LISTEN_ONLY, sdk.general.mode);
+    TEST_ASSERT_TRUE(port.stop());
+
+    // Dropping the latch is not forgetting: a controller still off the bus re-raises it.
+    port.configure(TwaiPort::Mode::Normal);
+    TEST_ASSERT_TRUE(port.start(Bitrate::K125));
+    TEST_ASSERT_TRUE(port.stop());
 }
 
 void adapter_install_and_start_errors() {
@@ -874,6 +903,7 @@ int main() {
     RUN_TEST(adapter_uses_real_contract_fields);
     RUN_TEST(adapter_selects_mode_and_timing_per_bitrate);
     RUN_TEST(slcan_channel_maps_counters_and_releases_a_failed_open);
+    RUN_TEST(listen_only_may_reopen_after_a_latched_bus_off);
     RUN_TEST(adapter_install_and_start_errors);
     RUN_TEST(adapter_polls_alerts_and_status);
     RUN_TEST(adapter_bus_off_between_poll_and_stop);

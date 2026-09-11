@@ -14,7 +14,9 @@ public:
 
     bool open(bench::Bitrate bitrate, bool listen_only) override;
     bool close() override;
-    /// Refreshes the driver snapshot, so the answer describes now rather than last time.
+    /// Counter flags report what happened since the previous read, state flags report now.
+    /// Real slcan firmware clears its flags on read; the driver counters only ever grow, so
+    /// the difference is taken here or a single early fault would mask every later recovery.
     uint8_t status() override;
     /// True when a frame was produced. Validation and DLC clamping stay in the adapter.
     bool poll(bench::SlcanFrame& frame);
@@ -22,4 +24,7 @@ public:
 private:
     TwaiPort& port_;
     bool open_ = false;
+    uint32_t seen_overruns_ = 0;
+    uint32_t seen_arbitration_ = 0;
+    uint32_t seen_bus_errors_ = 0;
 };

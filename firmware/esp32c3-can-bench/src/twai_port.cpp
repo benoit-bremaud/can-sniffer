@@ -35,7 +35,12 @@ bool timing_for(bench::Bitrate bitrate, twai_timing_config_t& timing) {
 }  // namespace
 
 bool TwaiPort::start(bench::Bitrate bitrate) {
-    if (installed_ || bus_off_) { return false; }
+    if (installed_) { return false; }
+    // A latched bus-off forbids emitting again, not observing. Listen-only cannot influence
+    // the bus, so it is the one mode allowed to reopen after the latch, and the latch is
+    // dropped with it: a later poll re-raises it if the controller is still off the bus.
+    if (bus_off_ && mode_ != Mode::ListenOnly) { return false; }
+    bus_off_ = bus_off_ && mode_ != Mode::ListenOnly;
     twai_timing_config_t timing = {};
     if (!timing_for(bitrate, timing)) { return false; }
     diagnostics_ = Diagnostics{};

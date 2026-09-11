@@ -32,6 +32,11 @@ transmissions or acknowledgments) but can receive messages" — enforced by the 
 - L2: `L` installs `TWAI_MODE_LISTEN_ONLY`; `O` installs `TWAI_MODE_NORMAL`, which
   acknowledges and exists for the two-node bench where nothing else would acknowledge the
   generator. The active mode is reported, never assumed.
+- L2b: A latched bus-off forbids reopening in normal mode, as it does for every transmitting
+  profile, but not in listen-only: that mode cannot influence the bus, so refusing it would
+  only strand the operator with no way to observe what went wrong, on a profile that
+  deliberately prints no diagnostic. The latch is dropped with the reopen and re-raised by
+  the next poll if the controller is still off the bus.
 - L3: Every command is answered — CR on success, BEL on refusal — including a bare
   terminator, which python-can writes on every `set_bitrate`. A silent adapter makes
   "applied" indistinguishable from "ignored", which is what made the CANable undiagnosable
@@ -56,6 +61,11 @@ transmissions or acknowledgments) but can receive messages" — enforced by the 
 - L8: `F` answers the LAWICEL status byte built from the driver counters: receive overrun,
   error-passive derived from the 128 threshold, arbitration lost, bus error and bus-off. When
   no snapshot is readable it reports no flags rather than inventing them.
+- L8b: Counter flags describe what happened **since the previous read**; state flags describe
+  the controller **now**. Real slcan firmware clears its flags on read, and the driver's
+  counters only ever grow: reporting them raw would mean one arbitration loss at startup
+  pinned that bit for the rest of the session, so the host could never observe the bus
+  recovering. A new session starts from a clean slate rather than inheriting the last one's.
 - L9: A start that fails releases the driver, so a later open cannot fail for a reason
   unrelated to the bus. `F` on a closed channel reports no flags rather than replaying the
   previous session's, since the driver snapshot deliberately survives cleanup. A frame with a non-compliant DLC is clamped to eight rather than
@@ -88,7 +98,8 @@ the session returns.
 | L4 | Each supported code maps to its own timing config; `S7`/`S9` refused | `S4` accepted, `S7`/`S9` refused |
 | L5, L6 | Bitrate and reopen refused while open; close idempotent, reaches the port, and a refused cleanup is reported | Both observed on the board |
 | L7 | Output asserted byte-exact, empty until spoken to | No human-readable byte seen |
-| L8 | Each counter mapped to its flag; unreadable snapshot yields zero | `F00` before and after a session |
+| L8, L8b | Each counter mapped to its flag; a settled fault clears on the next read while a state persists; unreadable snapshot yields zero | `F00` before and after a session |
+| L2b | Normal-mode reopen refused after bus-off, listen-only allowed and the latch re-raised | — |
 | L9 | Failed start uninstalls; DLC above eight clamped | — |
 
 Native coverage of authored code stays at or above 90%; all six images must build.
