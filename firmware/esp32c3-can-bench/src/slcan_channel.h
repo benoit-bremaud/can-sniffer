@@ -21,4 +21,5 @@ public:
 
 private:
     TwaiPort& port_;
+    bool open_ = false;
 };

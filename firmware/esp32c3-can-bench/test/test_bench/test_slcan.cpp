@@ -74,9 +74,9 @@ void parser_maps_only_the_bitrates_the_controller_can_produce() {
     }
 }
 
-void parser_always_refuses_to_transmit() {
-    // The safety property of this profile, so it is named and asserted rather than folded
-    // into the generic invalid case.
+void parser_classifies_transmit_lines_distinctly_from_invalid_ones() {
+    // Classification only. That nothing ever reaches the driver is proven by the session
+    // test below and by application_slcan_speaks_protocol_only; a parser cannot prove it.
     SlcanParser parser;
     for (const char* line : {"t1238001122334455667788\r", "T001ABCDE80102030405060708\r",
                              "r1230\r", "R001ABCDE0\r", "x001ABCDE0\r"}) {
@@ -91,8 +91,9 @@ void parser_rejects_malformed_and_overlong_lines() {
         TEST_ASSERT_EQUAL(static_cast<int>(SlcanCommand::Invalid),
                           static_cast<int>(feed_line(parser, line).command));
     }
-    // An empty line is silence, not an error: the host sends bare terminators.
-    TEST_ASSERT_EQUAL(static_cast<int>(SlcanCommand::None),
+    // A bare terminator is answered rather than ignored: python-can emits one on every
+    // set_bitrate, and silence there is the ambiguity this profile exists to remove.
+    TEST_ASSERT_EQUAL(static_cast<int>(SlcanCommand::Empty),
                       static_cast<int>(feed_line(parser, "\r").command));
     // Overlong input is refused as a whole; its tail must never execute as a command.
     const SlcanRequest request = feed_line(parser, std::string(kSlcanLineLimit + 4, 'C') + "\r");
@@ -128,6 +129,12 @@ void encoder_renders_frames_the_host_can_parse() {
     remote.dlc = 8;
     remote.data[0] = 0xFF;  // Ignored: a remote frame carries no payload.
     TEST_ASSERT_EQUAL_STRING("R001ABCDE8\r", encode(remote).c_str());
+
+    SlcanFrame remote_standard;
+    remote_standard.id = 0x123;
+    remote_standard.rtr = true;
+    remote_standard.dlc = 4;
+    TEST_ASSERT_EQUAL_STRING("r1234\r", encode(remote_standard).c_str());
 }
 
 void encoder_refuses_what_it_cannot_represent() {
@@ -216,10 +223,16 @@ void session_reports_every_refusal_instead_of_staying_silent() {
 
     // A transmit request is refused in every state, open or closed.
     TEST_ASSERT_EQUAL_STRING("\a", drive(session, "T001ABCDE80102030405060708\r").c_str());
+    // A refused transmit must not reach the channel at all, not even to open it.
+    TEST_ASSERT_EQUAL(0, channel.opens);
+    TEST_ASSERT_EQUAL(0, channel.closes);
     drive(session, "L\r");
     TEST_ASSERT_EQUAL_STRING("\a", drive(session, "t1230\r").c_str());
     TEST_ASSERT_EQUAL_STRING("\a", drive(session, "S9\r").c_str());
     TEST_ASSERT_EQUAL_STRING("\a", drive(session, "Z\r").c_str());
+    // A bare terminator is answered too. python-can writes one on every set_bitrate, and
+    // leaving it unanswered would reintroduce exactly the silence this profile removes.
+    TEST_ASSERT_EQUAL_STRING("\r", drive(session, "\r").c_str());
 
     // A failing driver is reported, and the channel stays closed rather than half-open.
     FakeChannel refusing;
@@ -227,9 +240,20 @@ void session_reports_every_refusal_instead_of_staying_silent() {
     SlcanSession other(refusing);
     TEST_ASSERT_EQUAL_STRING("\a", drive(other, "L\r").c_str());
     TEST_ASSERT_FALSE(other.is_open());
-    // Closing an already closed channel is a satisfied request, not an error.
+    // Closing an already closed channel still reaches the port: an earlier cleanup may have
+    // failed with the driver installed, and C is the only command that can retry it.
     TEST_ASSERT_EQUAL_STRING("\r", drive(other, "C\r").c_str());
-    TEST_ASSERT_EQUAL(0, refusing.closes);
+    TEST_ASSERT_EQUAL(1, refusing.closes);
+
+    // A close the driver refused is reported, and the channel stays open rather than
+    // pretending the cleanup happened.
+    FakeChannel stuck;
+    stuck.close_ok = false;
+    SlcanSession held(stuck);
+    drive(held, "L\r");
+    TEST_ASSERT_EQUAL_STRING("\a", drive(held, "C\r").c_str());
+    TEST_ASSERT_TRUE(held.is_open());
+    TEST_ASSERT_EQUAL(1, stuck.closes);
 }
 
 void session_answers_status_and_version() {
@@ -268,7 +292,7 @@ void session_drops_a_partial_line_on_reset() {
 void run_slcan_tests() {
     RUN_TEST(parser_accepts_the_commands_the_host_sends);
     RUN_TEST(parser_maps_only_the_bitrates_the_controller_can_produce);
-    RUN_TEST(parser_always_refuses_to_transmit);
+    RUN_TEST(parser_classifies_transmit_lines_distinctly_from_invalid_ones);
     RUN_TEST(parser_rejects_malformed_and_overlong_lines);
     RUN_TEST(encoder_renders_frames_the_host_can_parse);
     RUN_TEST(encoder_refuses_what_it_cannot_represent);

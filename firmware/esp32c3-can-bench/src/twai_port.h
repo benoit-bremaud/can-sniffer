@@ -24,7 +24,6 @@ public:
     /// Select the mode for the next start. Ignored while installed; the channel is closed
     /// and reopened to change it, which is what the slcan protocol already requires.
     void configure(Mode mode) { mode_ = mode; }
-    Mode mode() const { return mode_; }
     bool start(bench::Bitrate bitrate = bench::Bitrate::K125) override;
     bool submit(const bench::Frame& frame) override;
     bench::Result poll() override;

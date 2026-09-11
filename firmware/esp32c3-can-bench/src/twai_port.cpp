@@ -45,7 +45,9 @@ bool TwaiPort::start(bench::Bitrate bitrate) {
         static_cast<gpio_num_t>(bench::kTxPin),
         static_cast<gpio_num_t>(bench::kRxPin), mode);
     general.tx_queue_len = 0;
-    general.rx_queue_len = 1;
+    // A sniffer must absorb a burst between two loop iterations; the generator profiles
+    // keep the single slot that matches their one-frame-in-flight cadence.
+    general.rx_queue_len = mode_ == Mode::ListenOnly ? 32 : 1;
     general.alerts_enabled = TWAI_ALERT_TX_SUCCESS | TWAI_ALERT_TX_FAILED | TWAI_ALERT_BUS_OFF;
     const twai_filter_config_t filter = TWAI_FILTER_CONFIG_ACCEPT_ALL();
     if (twai_driver_install(&general, &timing, &filter) != ESP_OK) { return false; }

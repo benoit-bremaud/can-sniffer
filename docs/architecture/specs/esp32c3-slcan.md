@@ -32,9 +32,10 @@ transmissions or acknowledgments) but can receive messages" — enforced by the 
 - L2: `L` installs `TWAI_MODE_LISTEN_ONLY`; `O` installs `TWAI_MODE_NORMAL`, which
   acknowledges and exists for the two-node bench where nothing else would acknowledge the
   generator. The active mode is reported, never assumed.
-- L3: Every command is answered — CR on success, BEL on refusal. A silent adapter makes
+- L3: Every command is answered — CR on success, BEL on refusal — including a bare
+  terminator, which python-can writes on every `set_bitrate`. A silent adapter makes
   "applied" indistinguishable from "ignored", which is what made the CANable undiagnosable
-  and cost a full day of bench time.
+  and cost a full day of bench time, so the rule admits no exception.
 - L4: Only rates the controller can produce are accepted. It offers 10k, 20k, 50k, 100k,
   125k, 250k, 500k, 800k and 1M, so exactly two codes are refused: `S9` at 83.3k, absent from
   the SDK, and `S7`, which LAWICEL and the SDK read as 800k while python-can sends it for
@@ -43,7 +44,12 @@ transmissions or acknowledgments) but can receive messages" — enforced by the 
 - L5: A bitrate is accepted only while the channel is closed, and opening an open channel is
   refused. The controller cannot retime a running channel, so accepting either would report a
   configuration that was never applied.
-- L6: Closing a closed channel succeeds: it is a request already satisfied, not an error.
+- L6: `C` always reaches the driver and reports what cleanup actually returned. Closing a
+  closed channel succeeds, but the command is never short-circuited: an earlier cleanup may
+  have failed with the driver still installed, and `C` is the only command able to retry it.
+- L6b: The receive queue holds 32 frames in listen-only mode. One slot suits the generator
+  profiles, which keep a single frame in flight; a sniffer must absorb a burst between two
+  loop iterations, and the driver silently counts what it drops.
 - L7: The profile writes protocol bytes and nothing else. No banner, no status line, no
   logger — any human-readable output would arrive inside the frame stream and be parsed by
   the host as traffic.
@@ -51,7 +57,8 @@ transmissions or acknowledgments) but can receive messages" — enforced by the 
   error-passive derived from the 128 threshold, arbitration lost, bus error and bus-off. When
   no snapshot is readable it reports no flags rather than inventing them.
 - L9: A start that fails releases the driver, so a later open cannot fail for a reason
-  unrelated to the bus. A frame with a non-compliant DLC is clamped to eight rather than
+  unrelated to the bus. `F` on a closed channel reports no flags rather than replaying the
+  previous session's, since the driver snapshot deliberately survives cleanup. A frame with a non-compliant DLC is clamped to eight rather than
   driving a read past the payload.
 
 ## Design
@@ -65,7 +72,9 @@ native suite. The session talks to `SlcanChannelPort`, whose two implementations
 single source of truth shared by the codec, the adapter and the scenarios; `TwaiPort` maps
 each to its SDK timing config and refuses anything outside the enum.
 
-`BENCH_SLCAN` selects the profile, mutually exclusive with the other four. The loop reads a
+`BENCH_SLCAN` selects the profile, mutually exclusive with the other four and rejected at
+compile time alongside `BENCH_NO_ACK`, which fabricates acknowledgements and is the opposite
+of what a receive-only sniffer promises. The loop reads a
 bounded number of input bytes, then drains a bounded number of frames, and writes only what
 the session returns.
 
@@ -77,7 +86,7 @@ the session returns.
 | L2 | Mode reaching the driver asserted per request | `L` accepted, mode installed |
 | L3 | Every command's exact reply asserted | Every reply observed over USB |
 | L4 | Each supported code maps to its own timing config; `S7`/`S9` refused | `S4` accepted, `S7`/`S9` refused |
-| L5, L6 | Bitrate and reopen refused while open; close idempotent | Both observed on the board |
+| L5, L6 | Bitrate and reopen refused while open; close idempotent, reaches the port, and a refused cleanup is reported | Both observed on the board |
 | L7 | Output asserted byte-exact, empty until spoken to | No human-readable byte seen |
 | L8 | Each counter mapped to its flag; unreadable snapshot yields zero | `F00` before and after a session |
 | L9 | Failed start uninstalls; DLC above eight clamped | — |

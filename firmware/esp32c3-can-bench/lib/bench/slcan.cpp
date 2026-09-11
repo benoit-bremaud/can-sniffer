@@ -64,7 +64,7 @@ SlcanRequest SlcanParser::feed(char byte) {
 }
 
 SlcanRequest SlcanParser::interpret() const {
-    if (size_ == 0) { return make(SlcanCommand::None); }
+    if (size_ == 0) { return make(SlcanCommand::Empty); }
     switch (line_[0]) {
     case 'C':
         return make(size_ == 1 ? SlcanCommand::Close : SlcanCommand::Invalid);
@@ -142,9 +142,15 @@ SlcanReply SlcanSession::feed(char byte) {
     switch (request.command) {
     case SlcanCommand::None:
         return SlcanReply();
+    case SlcanCommand::Empty:
+        // python-can emits one on every set_bitrate; answering costs nothing and keeps the
+        // rule absolute: the host never has to guess whether a line was seen.
+        return reply(true);
     case SlcanCommand::Close:
-        // Idempotent: closing a closed channel is a request already satisfied, not an error.
-        open_ = open_ ? !port_.close() : false;
+        // Always reaches the port: an earlier cleanup may have failed with the driver
+        // still installed, and C is the only command that can retry it. Closing an already
+        // closed channel still succeeds, the port reporting true when nothing is installed.
+        open_ = !port_.close();
         return reply(!open_);
     case SlcanCommand::OpenNormal:
     case SlcanCommand::OpenListen: {
@@ -152,7 +158,6 @@ SlcanReply SlcanSession::feed(char byte) {
         const bool listen = request.command == SlcanCommand::OpenListen;
         if (!port_.open(bitrate_, listen)) { return reply(false); }
         open_ = true;
-        listen_only_ = listen;
         return reply(true);
     }
     case SlcanCommand::SetBitrate:

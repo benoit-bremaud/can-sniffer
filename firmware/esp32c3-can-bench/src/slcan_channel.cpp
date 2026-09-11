@@ -10,16 +10,23 @@ constexpr uint32_t kErrorPassiveThreshold = 128;
 
 bool TwaiSlcanChannel::open(bench::Bitrate bitrate, bool listen_only) {
     port_.configure(listen_only ? TwaiPort::Mode::ListenOnly : TwaiPort::Mode::Normal);
-    if (port_.start(bitrate)) { return true; }
+    if (port_.start(bitrate)) { open_ = true; return true; }
     // A failed start can still own the driver, so release it: leaving it installed would
     // make the next open fail for a reason unrelated to the bus.
     port_.stop();
     return false;
 }
 
-bool TwaiSlcanChannel::close() { return port_.stop(); }
+bool TwaiSlcanChannel::close() {
+    const bool released = port_.stop();
+    if (released) { open_ = false; }
+    return released;
+}
 
 uint8_t TwaiSlcanChannel::status() {
+    // poll() keeps its snapshot across cleanup by design, so a closed channel would
+    // otherwise replay the flags of the session before it.
+    if (!open_) { return 0; }
     port_.poll();
     const auto& diagnostic = port_.diagnostics();
     if (!diagnostic.status_available) {

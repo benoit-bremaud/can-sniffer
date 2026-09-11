@@ -400,9 +400,9 @@ void adapter_selects_mode_and_timing_per_bitrate() {
     // A value outside the enum is refused rather than defaulted: silently selecting another
     // rate is the defect this firmware exists to avoid.
     TwaiPort invalid;
-    const int starts_before = sdk.starts;
+    const int installs_before = sdk.installs;
     TEST_ASSERT_FALSE(invalid.start(static_cast<Bitrate>(42)));
-    TEST_ASSERT_EQUAL(starts_before, sdk.starts);  // refused before touching the driver
+    TEST_ASSERT_EQUAL(installs_before, sdk.installs);  // refused before the driver is installed
 }
 
 void slcan_channel_maps_counters_and_releases_a_failed_open() {
@@ -426,6 +426,8 @@ void slcan_channel_maps_counters_and_releases_a_failed_open() {
 
     sdk.counters = {TWAI_STATE_RUNNING, 0, 0, 0, 0, 3, 0, 0};
     TEST_ASSERT_EQUAL_HEX8(0x08, channel.status());          // rx overrun
+    sdk.counters = {TWAI_STATE_RUNNING, 0, 0, 0, 2, 0, 0, 0};
+    TEST_ASSERT_EQUAL_HEX8(0x08, channel.status());          // frames the queue missed
     sdk.counters = {TWAI_STATE_RUNNING, 128, 0, 0, 0, 0, 0, 0};
     TEST_ASSERT_EQUAL_HEX8(0x20, channel.status());          // error passive by TX counter
     sdk.counters = {TWAI_STATE_RUNNING, 0, 200, 0, 0, 0, 0, 0};
@@ -456,8 +458,25 @@ void slcan_channel_maps_counters_and_releases_a_failed_open() {
     TEST_ASSERT_TRUE(frame.extended);
     TEST_ASSERT_EQUAL(8, frame.dlc);
     TEST_ASSERT_EQUAL_HEX8(0xA7, frame.data[7]);
+    TEST_ASSERT_FALSE(frame.rtr);
+
+    // A remote frame crosses as a remote frame: rendering it as data would put eight bytes
+    // of stale payload into the stream the host parses.
+    twai_message_t remote = {};
+    remote.identifier = 0x123;
+    remote.rtr = 1;
+    remote.data_length_code = 4;
+    sdk.incoming.push_back(remote);
+    TEST_ASSERT_TRUE(reader.poll(frame));
+    TEST_ASSERT_TRUE(frame.rtr);
+    TEST_ASSERT_FALSE(frame.extended);
+    TEST_ASSERT_EQUAL(4, frame.dlc);
+
     TEST_ASSERT_FALSE(reader.poll(frame));  // empty queue is not an error
     TEST_ASSERT_TRUE(reader.close());
+    // A closed channel must not replay the flags of the session before it.
+    sdk.counters = {TWAI_STATE_RUNNING, 0, 0, 0, 0, 0, 0, 9};
+    TEST_ASSERT_EQUAL_HEX8(0x00, reader.status());
 }
 
 void adapter_install_and_start_errors() {
@@ -702,7 +721,9 @@ void application_slcan_speaks_protocol_only() {
     TEST_ASSERT_EQUAL_STRING("\r", Serial.output.c_str());
     TEST_ASSERT_EQUAL(1, sdk.starts);
     TEST_ASSERT_EQUAL(TWAI_MODE_LISTEN_ONLY, sdk.general.mode);
-    TEST_ASSERT_EQUAL(16, sdk.timing.brp);  // 250 kbit/s reached the driver
+    // Expressed as the rate, not as the divisor, which belongs to the SDK's table.
+    TEST_ASSERT_EQUAL_UINT32(250000u,
+        80000000u / (sdk.timing.brp * (1u + sdk.timing.tseg_1 + sdk.timing.tseg_2)));
 
     // A received frame is rendered exactly as the host parses it.
     twai_message_t incoming = {};

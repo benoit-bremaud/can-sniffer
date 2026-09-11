@@ -27,6 +27,11 @@
 #if (BENCH_AUTONOMOUS + BENCH_BUTTONS + BENCH_RECEIVER + BENCH_SLCAN) > 1
 #error "Select only one bench profile"
 #endif
+#if BENCH_NO_ACK && BENCH_SLCAN
+// NO_ACK fabricates acknowledgements on the bus, which is the opposite of what a
+// receive-only sniffer promises.
+#error "BENCH_NO_ACK must not be combined with the slcan profile"
+#endif
 #if BENCH_NO_ACK && BENCH_AUTONOMOUS
 // That image would emit after every boot, report fabricated success and need no USB host,
 // leaving no channel able to announce that the success means nothing.
@@ -41,6 +46,7 @@ BenchReceiver receiver(can);
 TwaiSlcanChannel channel(can);
 bench::SlcanSession session(channel);
 constexpr unsigned kReceiveBudget = 16;
+bool slcan_connected = false;
 #else
 bench::BenchController controller(can);
 #endif
@@ -267,6 +273,13 @@ void loop() {
 #if BENCH_SLCAN
     // Protocol only. A banner or a status line would reach the host inside the same stream
     // and be parsed as traffic, so this profile never writes a human-readable byte.
+    const bool present = static_cast<bool>(Serial);
+    if (present != slcan_connected) {
+        // A host that vanished mid-line must not leave its fragment to be joined onto the
+        // next host's first command.
+        session.reset();
+        slcan_connected = present;
+    }
     for (unsigned i = 0; i < kInputBudget && Serial.available() > 0; ++i) {
         const int byte = Serial.read();
         if (byte < 0) { break; }

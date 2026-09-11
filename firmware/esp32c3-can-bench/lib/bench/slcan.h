@@ -26,6 +26,7 @@ struct SlcanFrame {
 /// than simply invalid: refusing them is a safety property worth naming and testing.
 enum class SlcanCommand {
     None,       ///< No complete line yet.
+    Empty,      ///< A bare terminator, answered rather than ignored.
     Close,      ///< C
     OpenNormal, ///< O — acknowledges on the bus; bench use only.
     OpenListen, ///< L — TWAI_MODE_LISTEN_ONLY; the controller cannot influence the bus.
@@ -98,7 +99,6 @@ public:
     void reset();
     bool is_open() const { return open_; }
     Bitrate bitrate() const { return bitrate_; }
-    bool listen_only() const { return listen_only_; }
 
 private:
     SlcanReply reply(bool accepted);
@@ -107,11 +107,12 @@ private:
     char out_[kSlcanFrameChars] = {};
     Bitrate bitrate_ = Bitrate::K125;
     bool open_ = false;
-    bool listen_only_ = true;
 };
 
-/// Build the LAWICEL status byte from controller counters. Bit 3 is error-passive, bit 5
-/// arbitration lost, bit 6 bus error, bit 7 bus-off; bits 0 and 1 are the queue overruns.
+/// Build the LAWICEL status byte from controller counters: bit 3 data overrun, bit 5
+/// error-passive, bit 6 arbitration lost, bit 7 bus error. Bits 0 and 1, the host queue
+/// overruns, are never set, and bus-off is reported on bit 7 like any other bus error —
+/// LAWICEL defines no bit of its own for it.
 uint8_t status_flags(bool rx_overrun, bool error_passive, bool arbitration_lost,
                      bool bus_error, bool bus_off);
 
