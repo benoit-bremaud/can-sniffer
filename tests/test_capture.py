@@ -136,6 +136,7 @@ def test_slcan_backend_applies_bitrate_and_listen_only(monkeypatch: pytest.Monke
             channel="/dev/serial/by-id/usb-CANable",
             bitrate=250_000,
             interface=CanInterface.SLCAN,
+            allow_unverified_listen_only=True,
         )
     )
 
@@ -269,7 +270,11 @@ def test_slcan_releases_the_device_when_configuration_fails(
     bus.set_bitrate = explode  # type: ignore[method-assign]
     monkeypatch.setattr(can, "Bus", lambda **kwargs: bus)
     adapter = PythonCanAdapter(controller_mode=FakeControllerMode(True))
-    slcan = CaptureConfiguration(channel="/dev/ttyACM0", interface=CanInterface.SLCAN)
+    slcan = CaptureConfiguration(
+        channel="/dev/ttyACM0",
+        interface=CanInterface.SLCAN,
+        allow_unverified_listen_only=True,
+    )
 
     with pytest.raises(ValueError, match="Invalid bitrate"):
         adapter.open(slcan)
@@ -299,3 +304,37 @@ def test_close_stays_usable_when_shutdown_raises() -> None:
     # The failed shutdown must not leave the adapter believing it is still open.
     adapter.open(CaptureConfiguration(channel="can0"))
     adapter.close()
+
+
+def test_slcan_refuses_until_the_unverifiable_silence_is_accepted() -> None:
+    """The firmware acknowledges nothing, so silence is requested, never confirmed."""
+    created: list[CaptureConfiguration] = []
+    adapter = PythonCanAdapter(
+        lambda configuration: created.append(configuration) or FakeBus([]),  # type: ignore[func-returns-value]
+        FakeControllerMode(True),
+    )
+    refused = CaptureConfiguration(channel="/dev/ttyACM0", interface=CanInterface.SLCAN)
+
+    with pytest.raises(ListenOnlyUnavailableError, match="silence cannot be confirmed"):
+        adapter.open(refused)
+
+    # Deny by default is uniform: no backend opens on an unproven mode by accident.
+    assert created == []
+    adapter.open(
+        CaptureConfiguration(
+            channel="/dev/ttyACM0",
+            interface=CanInterface.SLCAN,
+            allow_unverified_listen_only=True,
+        )
+    )
+    assert len(created) == 1
+
+
+def test_accepting_the_risk_never_relaxes_socketcan() -> None:
+    """The acceptance covers an unverifiable backend, not a verifiable one that failed."""
+    adapter = PythonCanAdapter(lambda configuration: FakeBus([]), FakeControllerMode(False))
+
+    with pytest.raises(ListenOnlyUnavailableError, match="not in listen-only"):
+        adapter.open(
+            CaptureConfiguration(channel="can0", allow_unverified_listen_only=True)
+        )

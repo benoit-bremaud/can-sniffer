@@ -40,6 +40,10 @@ class CaptureConfiguration:
     bitrate: int = 125_000
     listen_only: bool = True
     interface: CanInterface = CanInterface.SOCKETCAN
+    #: Accept a silent mode that was requested but cannot be confirmed. Required by the
+    #: slcan backend, whose firmware acknowledges no command, so the adapter has no way
+    #: to tell a listening device from an acknowledging one. Isolated benches only.
+    allow_unverified_listen_only: bool = False
 
 
 class CanCapturePort(Protocol):
@@ -164,9 +168,10 @@ class PythonCanAdapter:
             raise ValueError("listen-only mode is mandatory")
         if self._bus is not None:
             raise RuntimeError("CAN adapter is already open")
-        # slcan writes the L command itself. Every other backend must be proven, so a
-        # future one is guarded by default rather than silently exempt.
-        if configuration.interface is not CanInterface.SLCAN:
+        if configuration.interface is CanInterface.SLCAN:
+            self._require_accepted_risk(configuration)
+        else:
+            # Deny by default: a future backend is guarded rather than silently exempt.
             self._require_listen_only(configuration.channel)
         self._bus = self._bus_factory(configuration)
 
@@ -187,6 +192,25 @@ class PythonCanAdapter:
             f"the socketcan backend cannot set listen-only, so configure the interface "
             f"out of band (ip link set {channel} type can listen-only on) or select the "
             f"slcan backend, which applies it directly"
+        )
+
+    @staticmethod
+    def _require_accepted_risk(configuration: CaptureConfiguration) -> None:
+        """slcan requests listen-only but cannot prove it, so the operator must accept it.
+
+        The adapter writes `L` and the device answers nothing: docs/hardware/canable-2.0.md
+        records that this firmware's published command list does not even guarantee the
+        command, and that a created interface is no proof of electrical silence. Refusing
+        by default keeps one rule for every backend — nothing captures unverified unless
+        somebody said so on purpose.
+        """
+        if configuration.allow_unverified_listen_only:
+            return
+        raise ListenOnlyUnavailableError(
+            f"refusing to capture on {configuration.channel!r}: the slcan backend requests "
+            f"listen-only but the adapter acknowledges no command, so silence cannot be "
+            f"confirmed. Set allow_unverified_listen_only for an isolated bench, or install "
+            f"firmware exposing a native CAN interface before connecting to a live bus"
         )
 
     def receive(self, timeout: float | None = None) -> CanFrame | None:

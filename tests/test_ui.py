@@ -722,3 +722,37 @@ def test_window_selects_backend_and_states_the_expected_channel_form(
             channel="/dev/serial/by-id/usb-CANable", interface=CanInterface.SLCAN
         )
     ]
+
+
+def test_window_scopes_the_unverified_silence_acceptance_to_slcan(
+    qt_application: QApplication,
+) -> None:
+    """Only slcan needs it, and a stale tick must not follow the operator around."""
+    del qt_application
+    controller = FakeController([])
+    window = create_test_window(controller)
+
+    # socketcan is verifiable, so accepting an unverifiable silence is meaningless there.
+    assert window.unverified_silence_input.isEnabled() is False
+
+    window.interface_input.setCurrentIndex(
+        window.interface_input.findData(CanInterface.SLCAN)
+    )
+    assert window.unverified_silence_input.isEnabled() is True
+    window.unverified_silence_input.setChecked(True)
+    window.channel_input.setText("/dev/serial/by-id/usb-CANable")
+    window.start_capture()
+
+    assert controller.configurations == [
+        CaptureConfiguration(
+            channel="/dev/serial/by-id/usb-CANable",
+            interface=CanInterface.SLCAN,
+            allow_unverified_listen_only=True,
+        )
+    ]
+
+    # Going back to a verifiable backend clears it, so it cannot silently return.
+    window.interface_input.setCurrentIndex(
+        window.interface_input.findData(CanInterface.SOCKETCAN)
+    )
+    assert window.unverified_silence_input.isChecked() is False

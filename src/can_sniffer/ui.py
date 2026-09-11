@@ -7,6 +7,7 @@ from typing import Protocol
 
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QHBoxLayout,
@@ -87,6 +88,12 @@ class CaptureWindow(QMainWindow):
         self.interface_input.setAccessibleName("CAN backend")
         for backend in CanInterface:
             self.interface_input.addItem(backend.value, backend)
+        self.unverified_silence_input = QCheckBox("Accept unverified silence")
+        self.unverified_silence_input.setAccessibleName("Accept unverified listen-only")
+        self.unverified_silence_input.setToolTip(
+            "The slcan firmware acknowledges no command, so the adapter cannot confirm it "
+            "is electrically silent. Isolated bench only: never on a live charger bus."
+        )
         self.channel_input = QLineEdit("can0")
         self.channel_input.setAccessibleName("CAN channel")
         # The two backends take different channel forms; say so instead of expecting
@@ -134,6 +141,7 @@ class CaptureWindow(QMainWindow):
         controls.addWidget(self.interface_input)
         controls.addWidget(QLabel("Channel:"))
         controls.addWidget(self.channel_input)
+        controls.addWidget(self.unverified_silence_input)
         controls.addWidget(QLabel("Filter:"))
         controls.addWidget(self.filter_input)
         controls.addWidget(self.start_button)
@@ -214,7 +222,13 @@ class CaptureWindow(QMainWindow):
         if self._hinted_interface is not None:
             self.channel_input.clear()
         self._hinted_interface = self.selected_interface()
-        if self.selected_interface() is CanInterface.SLCAN:
+        slcan = self.selected_interface() is CanInterface.SLCAN
+        self.unverified_silence_input.setEnabled(slcan)
+        if not slcan:
+            # socketcan is verifiable, so the acceptance has no meaning there and must
+            # not survive as a stale tick that would later apply to slcan unnoticed.
+            self.unverified_silence_input.setChecked(False)
+        if slcan:
             self.channel_input.setPlaceholderText("/dev/serial/by-id/usb-...")
             self.channel_input.setToolTip(
                 "Serial device of the adapter. This backend applies the bitrate and "
@@ -239,7 +253,13 @@ class CaptureWindow(QMainWindow):
 
         try:
             self._controller.start(
-                CaptureConfiguration(channel=channel, interface=self.selected_interface())
+                CaptureConfiguration(
+                    channel=channel,
+                    interface=self.selected_interface(),
+                    allow_unverified_listen_only=(
+                        self.unverified_silence_input.isChecked()
+                    ),
+                )
             )
         except Exception as error:
             self.status_label.setText(f"Error: {error}")

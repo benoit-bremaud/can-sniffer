@@ -38,13 +38,26 @@ descriptor. These belong to the daemon, not to the slcan protocol.
 - S1: `CaptureConfiguration` carries the backend as a closed set (`socketcan`, `slcan`),
   defaulting to `socketcan` so existing behaviour is unchanged by omission.
 - S2: On `slcan`, the adapter passes `channel`, `bitrate` and `listen_only` to python-can,
-  which sends `S<n>` then `L`. The declared configuration is the applied configuration.
+  which sends `S<n>` then `L`. The bitrate is genuinely applied. Listen-only is only
+  **requested**: [canable-2.0.md](../../hardware/canable-2.0.md) records that this
+  firmware's published command list does not guarantee `L` and that it acknowledges no
+  command at all, which the bench confirmed — `C`, `S4` and `O` all return nothing. A
+  created interface is therefore no proof of electrical silence.
+- S2b: Because that silence is unverifiable rather than verified, the backend refuses to
+  open unless `allow_unverified_listen_only` is set. Deny-by-default then holds uniformly:
+  no backend ever captures on an unproven mode by accident, and the one case that cannot be
+  proven becomes a decision somebody took on purpose instead of an assumption nobody saw.
+  The UI exposes it only for `slcan`, and clears it when a verifiable backend is selected so
+  a stale tick cannot follow the operator back. Isolated benches only — on a live charger,
+  canable-2.0.md requires proving silent mode or installing firmware that exposes a native
+  CAN interface.
 - S3: On `socketcan`, the adapter verifies the controller is in listen-only mode before
   opening, and refuses otherwise. Verification failure, an unreadable interface or an
   undeterminable mode are all treated as "not listen-only": the capture fails closed.
   A tool that wrongly believes itself passive is worse than one that refuses to start.
-- S4: `listen_only=False` stays rejected for every backend. The invariant is unchanged; it
-  becomes enforceable on one backend and verified on the other.
+- S4: `listen_only=False` stays rejected for every backend. The invariant is unchanged; what
+  changes is its status per backend — verified on socketcan, consciously accepted as
+  unverifiable on slcan, and never merely assumed anywhere.
 - S5: Controller-mode inspection is reached through a port. The concrete implementation runs
   `ip` and lives in infrastructure; the application never spawns a subprocess, and tests use
   a double rather than a real interface.
@@ -76,6 +89,7 @@ the open/closed state handling in order to vary one constructor call. The existi
 | S1, S6 | Default configuration unchanged; both backends reach the factory | — |
 | S2 | Factory double asserts channel, bitrate and listen_only reach python-can | Bench capture at 125 kbit/s |
 | S3 | Listen-only true, false, and undeterminable; refusal raises, bus never created | Refusal on a normal-mode `can0` |
+| S2b | Refusal without the acceptance, bus never created; the acceptance never relaxes socketcan | — |
 | S4 | `listen_only=False` rejected for both backends | — |
 | S5 | Port double in tests; no subprocess spawned in the suite | — |
 | S7, S8 | Channel validation per backend; distinct error types | UI shows the expected channel form |
@@ -93,7 +107,8 @@ to capture. Listen-only only has meaning on a bus that already carries two other
 nodes — the charger. On the bench, the shipped path is therefore validated with an injected
 factory that opens in normal mode, which exercises every line except the one selecting
 `listen_only`; that line is covered by unit tests asserting `L` is requested. **That `L`
-actually silences the adapter on the wire remains unproven by any automated or bench test.**
+actually silences the adapter on the wire remains unproven by any automated or bench test,
+which is exactly why S2b makes it an explicit operator decision rather than a default.**
 
 **Status: the bench run is outstanding.** It was attempted on 2026-09-11 and could not be
 completed — the adapter stopped acknowledging, and a pyserial reference sequence that had
