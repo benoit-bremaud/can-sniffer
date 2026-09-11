@@ -2,7 +2,9 @@
 
 ## Context
 
-This sequence defines the adapter boundary and the capture loop for real or virtual SocketCAN.
+This sequence defines the adapter boundary and the capture loop, which is identical for every
+backend once a bus is open. Opening differs per backend and is modelled in
+[`02-sequence-open.md`](02-sequence-open.md).
 
 ## Diagram
 
@@ -11,7 +13,7 @@ sequenceDiagram
     participant Operator
     participant UseCase as Capture use case
     participant Port as CAN port
-    participant Adapter as SocketCAN adapter
+    participant Adapter as python-can adapter
     participant Decoder as Protocol decoder
 
     Operator->>UseCase: start(configuration)
