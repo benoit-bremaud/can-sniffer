@@ -1,0 +1,27 @@
+@startuml
+title stm — ButtonTestRunner lifecycle
+[*] --> ReleaseWait
+ReleaseWait --> Ready : all buttons released for 30 ms
+Ready --> ReleaseWait : multiple-button selection / reject
+Ready --> Running : single press stable 30 ms / start selected scenario
+Running --> Fault : initialization, submission, completion or cleanup error
+Running --> ReleaseWait : final TX_SUCCESS or stop / cleanup succeeds
+Ready --> ReleaseWait : USB stop
+Fault --> Fault : button press or USB stop / no re-arm
+state Running {
+  [*] --> Waiting
+  Waiting --> Pending : due / submit single-shot
+  Pending --> Waiting : TX_SUCCESS and more attempts remain
+}
+note right of Running
+First attempt +1000 ms, then at most 1 Hz.
+Busy button presses are discarded, never queued.
+USB loss does not change this state.
+end note
+note right of Fault
+Inspect bench and reset MCU.
+Reset returns to ReleaseWait, not emission.
+Cleanup may be retried by USB stop,
+but does not clear the runner fault latch.
+end note
+@enduml

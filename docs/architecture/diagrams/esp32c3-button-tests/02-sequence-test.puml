@@ -1,0 +1,38 @@
+@startuml
+title sd — UC1 Select and run a finite CAN test
+actor Operator
+participant "GPIO/USB application adapter" as App
+participant "DebouncedButtons" as Buttons
+participant "ButtonTestRunner" as Runner
+participant "BenchController" as Control
+participant "TWAI adapter" as CAN
+Operator -> App : press one button after release
+loop bounded application loop
+  App -> Runner : service(now), optional stop(now)
+  App -> Runner : tick(now, raw mask)
+  Runner -> Buttons : sample(raw mask, now)
+  Buttons --> Runner : stable mask or still bouncing
+  alt selection accepted while ready
+    Runner -> Control : configure(bitrate), command(Start, now)
+    Control -> CAN : install at selected bitrate, then start
+    Control --> Runner : ready or fault
+  else running and due, no pending frame
+    Runner -> Control : tick with scenario frame
+    Control -> CAN : submit single-shot / poll completion
+    CAN --> Control : accepted, TX_SUCCESS, error or timeout
+  end
+  alt final completion or USB stop
+    Runner -> Control : stop
+    Control -> CAN : cleanup
+    Control --> Runner : stopped or cleanup fault
+    Runner -> Buttons : reset() — require fresh stable release
+  else fault
+    Runner -> Runner : latch fault, require MCU reset
+  end
+end
+note over Runner, CAN
+Same completion/error policy as existing firmware.
+No queued tests or automatic retry.
+No bitrate switch while controller is running.
+end note
+@enduml
