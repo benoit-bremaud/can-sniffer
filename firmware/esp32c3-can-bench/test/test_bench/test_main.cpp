@@ -678,6 +678,7 @@ void tearDown() {}
 extern "C" void __gcov_dump();
 void run_button_tests();
 void run_receiver_tests();
+void run_slcan_tests();
 
 int main() {
     UNITY_BEGIN();
@@ -715,6 +716,7 @@ int main() {
     RUN_TEST(diagnostics_mark_failed_reads_unavailable);
     run_button_tests();
     run_receiver_tests();
+    run_slcan_tests();
 #if BENCH_RECEIVER
     RUN_TEST(application_receiver_never_transmits);
 #elif BENCH_BUTTONS
