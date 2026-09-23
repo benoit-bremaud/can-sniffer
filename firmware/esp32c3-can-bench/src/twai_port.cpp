@@ -13,25 +13,55 @@ namespace {
 constexpr twai_mode_t kMode = BENCH_NO_ACK ? TWAI_MODE_NO_ACK : TWAI_MODE_NORMAL;
 }  // namespace
 
+namespace {
+
+/// Every rate in bench::Bitrate maps to an SDK timing config; an unknown value is refused
+/// rather than defaulted, so a miscast can never silently select another bitrate.
+bool timing_for(bench::Bitrate bitrate, twai_timing_config_t& timing) {
+    switch (bitrate) {
+    case bench::Bitrate::K10: { const twai_timing_config_t t = TWAI_TIMING_CONFIG_10KBITS(); timing = t; return true; }
+    case bench::Bitrate::K20: { const twai_timing_config_t t = TWAI_TIMING_CONFIG_20KBITS(); timing = t; return true; }
+    case bench::Bitrate::K50: { const twai_timing_config_t t = TWAI_TIMING_CONFIG_50KBITS(); timing = t; return true; }
+    case bench::Bitrate::K100: { const twai_timing_config_t t = TWAI_TIMING_CONFIG_100KBITS(); timing = t; return true; }
+    case bench::Bitrate::K125: { const twai_timing_config_t t = TWAI_TIMING_CONFIG_125KBITS(); timing = t; return true; }
+    case bench::Bitrate::K250: { const twai_timing_config_t t = TWAI_TIMING_CONFIG_250KBITS(); timing = t; return true; }
+    case bench::Bitrate::K500: { const twai_timing_config_t t = TWAI_TIMING_CONFIG_500KBITS(); timing = t; return true; }
+    case bench::Bitrate::K800: { const twai_timing_config_t t = TWAI_TIMING_CONFIG_800KBITS(); timing = t; return true; }
+    case bench::Bitrate::M1: { const twai_timing_config_t t = TWAI_TIMING_CONFIG_1MBITS(); timing = t; return true; }
+    }
+    return false;
+}
+
+}  // namespace
+
 bool TwaiPort::start(bench::Bitrate bitrate) {
-    if (installed_ || bus_off_) { return false; }
-    if (bitrate != bench::Bitrate::K125 && bitrate != bench::Bitrate::K250) { return false; }
+    if (installed_) { return false; }
+    // A latched bus-off forbids emitting again, not observing. Listen-only cannot influence
+    // the bus, so it is the one mode allowed to reopen after the latch, and the latch is
+    // dropped with it: a later poll re-raises it if the controller is still off the bus.
+    if (bus_off_ && mode_ != Mode::ListenOnly) { return false; }
+    twai_timing_config_t timing = {};
+    if (!timing_for(bitrate, timing)) { return false; }
     diagnostics_ = Diagnostics{};
+    const twai_mode_t mode =
+        mode_ == Mode::ListenOnly ? TWAI_MODE_LISTEN_ONLY : kMode;
     twai_general_config_t general = TWAI_GENERAL_CONFIG_DEFAULT(
         static_cast<gpio_num_t>(bench::kTxPin),
-        static_cast<gpio_num_t>(bench::kRxPin), kMode);
+        static_cast<gpio_num_t>(bench::kRxPin), mode);
     general.tx_queue_len = 0;
-    general.rx_queue_len = 1;
+    // A sniffer must absorb a burst between two loop iterations; the generator profiles
+    // keep the single slot that matches their one-frame-in-flight cadence.
+    general.rx_queue_len = mode_ == Mode::ListenOnly ? 32 : 1;
     general.alerts_enabled = TWAI_ALERT_TX_SUCCESS | TWAI_ALERT_TX_FAILED | TWAI_ALERT_BUS_OFF;
-    twai_timing_config_t timing = TWAI_TIMING_CONFIG_125KBITS();
-    if (bitrate == bench::Bitrate::K250) {
-        const twai_timing_config_t faster = TWAI_TIMING_CONFIG_250KBITS();
-        timing = faster;
-    }
     const twai_filter_config_t filter = TWAI_FILTER_CONFIG_ACCEPT_ALL();
     if (twai_driver_install(&general, &timing, &filter) != ESP_OK) { return false; }
     installed_ = true;  // Keep ownership even if start fails so cleanup can retry.
-    return twai_start() == ESP_OK;
+    if (twai_start() != ESP_OK) { return false; }
+    // Only now, and only for a mode that cannot influence the bus: a listen-only attempt
+    // that failed must leave the latch standing, or the next normal-mode open would slip
+    // through a guard the bus-off is still supposed to hold shut.
+    if (mode_ == Mode::ListenOnly) { bus_off_ = false; }
+    return true;
 }
 
 bool TwaiPort::submit(const bench::Frame& frame) {
@@ -73,13 +103,17 @@ bench::Result TwaiPort::poll() {
     return result;
 }
 
-TwaiPort::ReceiveResult TwaiPort::receive(twai_message_t& frame) {
+TwaiPort::ReceiveResult TwaiPort::receive(twai_message_t& frame, DlcPolicy policy) {
     if (!installed_ || bus_off_) { return ReceiveResult::Error; }
     twai_message_t next = {};
     const auto error = twai_receive(&next, 0);
     if (error == ESP_ERR_TIMEOUT) { return ReceiveResult::Empty; }
-    if (error != ESP_OK || next.data_length_code > 8 ||
+    if (error != ESP_OK ||
         next.identifier > (next.extd ? 0x1FFFFFFFu : 0x7FFu)) { return ReceiveResult::Error; }
+    if (next.data_length_code > 8) {
+        if (policy == DlcPolicy::Reject) { return ReceiveResult::Error; }
+        next.data_length_code = 8;
+    }
     frame = next;
     return ReceiveResult::Frame;
 }
