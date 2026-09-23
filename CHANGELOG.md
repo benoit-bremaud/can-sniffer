@@ -5,6 +5,27 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Native slcan capture backend, so a serial CAN adapter can be used without configuring a
+  SocketCAN interface first.
+- Opt-in ESP32-C3 CAN test generator firmware for validating a capture chain against known
+  traffic on a bench, with autonomous, button-driven, manual and receive-only profiles, plus a
+  `NO_ACK` self-test image that proves the controller, transceiver and bit timing without needing
+  a second node.
+- ESP32-C3 receive-only slcan sniffer profile whose silence is enforced by the controller
+  (`TWAI_MODE_LISTEN_ONLY`) rather than promised by a command, and which refuses every transmit
+  request in every state.
+
+### Changed
+
+- Listen-only capture is now either verified or explicitly accepted rather than assumed. On
+  SocketCAN the controller mode is read back from the interface and capture fails closed unless
+  listen-only is confirmed; on slcan, where no adapter acknowledgement exists, the operator must
+  accept the unverified mode deliberately.
+
 ## [0.1.1] - 2026-09-04
 
 ### Added
